@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "releaseDate": "2026-07-13",
-  "downloadUrl": "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.0.exe",
-  "notes": "Prva EXE distribucija. Podrska za AutoCAD 2020-2026 i BricsCAD 2022+. Komanda TCMUPDATE proverava nadogradnju."
+  "downloadUrl": "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.1.exe",
+  "notes": "Ispravljene ribbon ikone i dugme Nadogradnja na tabu. Komanda TCMUPDATE."
 }

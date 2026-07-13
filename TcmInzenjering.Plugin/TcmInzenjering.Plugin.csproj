@@ -1,71 +1,71 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFrameworks>net8.0-windows</TargetFrameworks>
-    <TargetFrameworks Condition="'$(BuildLegacy)' == 'true'">net48;net8.0-windows</TargetFrameworks>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <RootNamespace>TcmInzenjering.Plugin</RootNamespace>
-    <UseWPF>true</UseWPF>
-    <PlatformTarget>x64</PlatformTarget>
-    <LangVersion>latest</LangVersion>
-    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
-    <AssemblyName>TcmInzenjering.Plugin.Legacy</AssemblyName>
-    <AutoCADPath Condition="'$(AutoCADPath)' == ''">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADPath>
-    <BundleDllSubdir>net48</BundleDllSubdir>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
-    <AssemblyName>TcmInzenjering.Plugin</AssemblyName>
-    <AutoCADPath Condition="'$(AutoCADPath)' == ''">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADPath>
-    <BundleDllSubdir>net8</BundleDllSubdir>
-  </PropertyGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
-    <PackageReference Include="System.Net.Http" Version="4.3.4" />
-    <PackageReference Include="System.Text.Json" Version="8.0.5" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="AcCoreMgd">
-      <HintPath>$(AutoCADPath)\accoremgd.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="AcDbMgd">
-      <HintPath>$(AutoCADPath)\acdbmgd.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="AcMgd">
-      <HintPath>$(AutoCADPath)\acmgd.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="AdWindows">
-      <HintPath>$(AutoCADPath)\AdWindows.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-  </ItemGroup>
-
-  <PropertyGroup>
-    <BundleDir>$(MSBuildProjectDirectory)\..\TcmInzenjering.bundle</BundleDir>
-    <BundleContents>$(BundleDir)\Contents</BundleContents>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <RibbonIcons Include="$(MSBuildProjectDirectory)\Icons\*.png" />
-  </ItemGroup>
-
-  <Target Name="CopyToBundle" AfterTargets="Build">
-    <MakeDir Directories="$(BundleContents)\$(BundleDllSubdir)" />
-    <MakeDir Directories="$(BundleContents)\Icons" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(RibbonIcons)" DestinationFolder="$(BundleContents)\Icons" SkipUnchangedFiles="true" Condition="'$(TargetFramework)' == 'net8.0-windows'" />
-  </Target>
-
-  <Target Name="DeployToApplicationPlugins" AfterTargets="CopyToBundle" Condition="'$(TargetFramework)' == 'net8.0-windows' and '$(DeployPlugin)' == 'true'">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\install-plugin.ps1&quot; -DllPath &quot;$(TargetPath)&quot;" IgnoreExitCode="false" />
-  </Target>
-
-</Project>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows</TargetFrameworks>
+    <TargetFrameworks Condition="'$(BuildLegacy)' == 'true'">net48;net8.0-windows</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TcmInzenjering.Plugin</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <AssemblyName>TcmInzenjering.Plugin.Legacy</AssemblyName>
+    <AutoCADPath Condition="'$(AutoCADPath)' == ''">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADPath>
+    <BundleDllSubdir>net48</BundleDllSubdir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <AssemblyName>TcmInzenjering.Plugin</AssemblyName>
+    <AutoCADPath Condition="'$(AutoCADPath)' == ''">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADPath>
+    <BundleDllSubdir>net8</BundleDllSubdir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(AutoCADPath)\accoremgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(AutoCADPath)\acdbmgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(AutoCADPath)\acmgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AdWindows">
+      <HintPath>$(AutoCADPath)\AdWindows.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <BundleDir>$(MSBuildProjectDirectory)\..\TcmInzenjering.bundle</BundleDir>
+    <BundleContents>$(BundleDir)\Contents</BundleContents>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <RibbonIcons Include="$(MSBuildProjectDirectory)\Icons\*.png" />
+  </ItemGroup>
+
+  <Target Name="CopyToBundle" AfterTargets="Build">
+    <MakeDir Directories="$(BundleContents)\$(BundleDllSubdir)" />
+    <MakeDir Directories="$(BundleContents)\$(BundleDllSubdir)\Icons" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(RibbonIcons)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)\Icons" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="DeployToApplicationPlugins" AfterTargets="CopyToBundle" Condition="'$(TargetFramework)' == 'net8.0-windows' and '$(DeployPlugin)' == 'true'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\install-plugin.ps1&quot; -DllPath &quot;$(TargetPath)&quot;" IgnoreExitCode="false" />
+  </Target>
+
+</Project>

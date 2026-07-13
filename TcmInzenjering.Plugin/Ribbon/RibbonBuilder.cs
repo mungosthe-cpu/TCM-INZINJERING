@@ -44,6 +44,8 @@ internal static class RibbonBuilder
 
         AddPanel(tab, "Alati", panel =>
         {
+            panel.Items.Add(CreateButton("Nadogradnja", "Proverava da li postoji novija verzija plugina.", "TCMUPDATE ", "refresh"));
+            panel.Items.Add(CreateButton("Verzija", "Prikaz trenutne verzije i linka za preuzimanje.", "TCMINFO ", "info"));
             panel.Items.Add(CreateButton("Osvezi Ribbon", "Ponovo kreira ribbon tab.", "TCMRIBBON ", "ribbon"));
         });
 
