@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+  SchemaVersion="1.0"
+  AutodeskProduct="AutoCAD"
+  ProductType="Application"
+  Name="TCM-INZINJERING"
+  Description="TCM-INZINJERING - putevi, osovina i stacionaza."
+  AppVersion="1.1.0">
+  <CompanyDetails
+    Name="TCM-INZINJERING"
+    Url="https://github.com/mungosthe-cpu/TCM-INZINJERING"
+    Email="" />
+
+  <Components Description="AutoCAD 2020-2024 (.NET Framework)">
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="AutoCAD*|AutoCAD"
+      SeriesMin="R23.1"
+      SeriesMax="R24.3" />
+    <ComponentEntry
+      AppName="TcmInzenjering"
+      AppType=".NET"
+      ModuleName="./Contents/net48/TcmInzenjering.Plugin.Legacy.dll"
+      AppDescription="TCM-INZINJERING - putevi i osovina"
+      LoadOnAutoCADStartup="True">
+      <Commands GroupName="TCM-INZINJERING">
+        <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
+        <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
+        <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMRIBBON" Local="TCMRIBBON" />
+        <Command Global="TCMHELLO" Local="TCMHELLO" />
+        <Command Global="TCMINFO" Local="TCMINFO" />
+        <Command Global="TCMUPDATE" Local="TCMUPDATE" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+
+  <Components Description="AutoCAD 2025-2026 (.NET 8)">
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="AutoCAD*|AutoCAD"
+      SeriesMin="R25.0"
+      SeriesMax="R25.1" />
+    <ComponentEntry
+      AppName="TcmInzenjering"
+      AppType=".NET"
+      ModuleName="./Contents/net8/TcmInzenjering.Plugin.dll"
+      AppDescription="TCM-INZINJERING - putevi i osovina"
+      LoadOnAutoCADStartup="True">
+      <Commands GroupName="TCM-INZINJERING">
+        <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
+        <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
+        <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMRIBBON" Local="TCMRIBBON" />
+        <Command Global="TCMHELLO" Local="TCMHELLO" />
+        <Command Global="TCMINFO" Local="TCMINFO" />
+        <Command Global="TCMUPDATE" Local="TCMUPDATE" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+
+  <Components Description="Civil 3D 2020-2024">
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="Civil3D"
+      SeriesMin="R23.1"
+      SeriesMax="R24.3" />
+    <ComponentEntry
+      AppName="TcmInzenjering"
+      AppType=".NET"
+      ModuleName="./Contents/net48/TcmInzenjering.Plugin.Legacy.dll"
+      AppDescription="TCM-INZINJERING - putevi i osovina"
+      LoadOnAutoCADStartup="True">
+      <Commands GroupName="TCM-INZINJERING">
+        <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
+        <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
+        <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMRIBBON" Local="TCMRIBBON" />
+        <Command Global="TCMHELLO" Local="TCMHELLO" />
+        <Command Global="TCMINFO" Local="TCMINFO" />
+        <Command Global="TCMUPDATE" Local="TCMUPDATE" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+
+  <Components Description="Civil 3D 2025-2026">
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="Civil3D"
+      SeriesMin="R25.0"
+      SeriesMax="R25.1" />
+    <ComponentEntry
+      AppName="TcmInzenjering"
+      AppType=".NET"
+      ModuleName="./Contents/net8/TcmInzenjering.Plugin.dll"
+      AppDescription="TCM-INZINJERING - putevi i osovina"
+      LoadOnAutoCADStartup="True">
+      <Commands GroupName="TCM-INZINJERING">
+        <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
+        <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
+        <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMRIBBON" Local="TCMRIBBON" />
+        <Command Global="TCMHELLO" Local="TCMHELLO" />
+        <Command Global="TCMINFO" Local="TCMINFO" />
+        <Command Global="TCMUPDATE" Local="TCMUPDATE" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

@@ -1,0 +1,28 @@
+---
+description: Uvek postavi TCM-INZINJERING bundle u AutoCAD ApplicationPlugins nakon promena
+alwaysApply: true
+---
+
+# Auto-deploy TCM-INZINJERING plugina
+
+Posle svake izmene koda plugina koji utice na DLL, uvek uradi sledece bez pitanja:
+
+1. Build projekta:
+
+```powershell
+cd "c:\Users\User\Desktop\AUTOCAD PROGRAMS"
+dotnet build TcmInzenjering.Plugin\TcmInzenjering.Plugin.csproj -c Release /p:DeployPlugin=true
+```
+
+2. Bundle se automatski kopira u **tri** lokacije (AutoCAD 2026 ucitava iz AppData ili Program Files):
+
+```
+%APPDATA%\Autodesk\ApplicationPlugins\TcmInzenjering.bundle\
+C:\Program Files\Autodesk\ApplicationPlugins\TcmInzenjering.bundle\
+C:\ProgramData\Autodesk\ApplicationPlugins\TcmInzenjering.bundle\
+```
+
+3. U `PackageContents.xml` mora biti `SeriesMin="R25.1"` i `SeriesMax="R25.1"` za AutoCAD 2026.
+
+Napomena: AutoCAD mora biti zatvoren tokom kopiranja da DLL ne bi bio zakljucan.
+Nakon toga korisnik restartuje AutoCAD 2026 da vidi tab **TCM-INZINJERING**.

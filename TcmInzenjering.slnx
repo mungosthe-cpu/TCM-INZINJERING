@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="TcmInzenjering.Plugin/TcmInzenjering.Plugin.csproj" />
+  <Project Path="TcmInzenjering.Setup/TcmInzenjering.Setup.csproj" />
+</Solution>

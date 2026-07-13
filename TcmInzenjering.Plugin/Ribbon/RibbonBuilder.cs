@@ -1,0 +1,152 @@
+using System.Windows.Controls;
+using System.Windows.Input;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.Windows;
+using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+
+namespace TcmInzenjering.Plugin.Ribbon;
+
+internal static class RibbonBuilder
+{
+    public const string TabId = "TCM_INZINJERING_TAB";
+    public const string TabTitle = "TCM-INZINJERING";
+
+    private const string FeaturedAppsTitle = "Featured Apps";
+
+    public static void CreateOrRefreshRibbonTab()
+    {
+        var ribbon = ComponentManager.Ribbon;
+        if (ribbon is null)
+        {
+            return;
+        }
+
+        var existingTab = ribbon.FindTab(TabId);
+        if (existingTab is not null)
+        {
+            ribbon.Tabs.Remove(existingTab);
+        }
+
+        var tab = new RibbonTab
+        {
+            Id = TabId,
+            Title = TabTitle
+        };
+
+        AddPanel(tab, "Putovi", panel =>
+        {
+            panel.Items.Add(CreateButton("PLO u tangentni poligon", "Pretvara polylinu u osovinu (pravac+luk) i stacionaze.", "TCMPLO2TAN ", "plo2tan"));
+            panel.Items.Add(CreateButton("Stacionaze", "Iscrtava oznake stacionaze duz polyline osovine.", "TCMSTACOZN ", "staco"));
+            panel.Items.Add(CreateButton("Azuriraj stac.", "Azurira stacionaze posle pomeranja osovine.", "TCMSTACAZUR ", "refresh"));
+            panel.Items.Add(CreateButton("Info osovine", "Prikaz tabele elemenata osovine u komandnoj liniji.", "TCMOSINFO ", "info"));
+            panel.Items.Add(CreateButton("Test plugin", "Provera da li je plugin ucitan.", "TCMHELLO ", "hello"));
+        });
+
+        AddPanel(tab, "Alati", panel =>
+        {
+            panel.Items.Add(CreateButton("Osvezi Ribbon", "Ponovo kreira ribbon tab.", "TCMRIBBON ", "ribbon"));
+        });
+
+        InsertTabNearFeaturedApps(ribbon, tab);
+    }
+
+    private static void AddPanel(RibbonTab tab, string panelTitle, Action<RibbonPanelSource> configure)
+    {
+        var panelSource = new RibbonPanelSource
+        {
+            Title = panelTitle
+        };
+
+        configure(panelSource);
+
+        var panel = new RibbonPanel
+        {
+            Source = panelSource
+        };
+
+        tab.Panels.Add(panel);
+    }
+
+    private static RibbonButton CreateButton(string text, string description, string command, string iconName)
+    {
+        var button = new RibbonButton
+        {
+            Text = text,
+            Description = description,
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            CommandHandler = new RibbonCommandHandler(),
+            CommandParameter = command
+        };
+
+        var icon = RibbonIconLoader.Load(iconName);
+        if (icon is not null)
+        {
+            button.LargeImage = icon;
+            button.Image = icon;
+        }
+
+        return button;
+    }
+
+    private static void InsertTabNearFeaturedApps(RibbonControl ribbon, RibbonTab tab)
+    {
+        var insertIndex = FindFeaturedAppsIndex(ribbon);
+        if (insertIndex >= 0)
+        {
+            ribbon.Tabs.Insert(insertIndex + 1, tab);
+            return;
+        }
+
+        ribbon.Tabs.Add(tab);
+    }
+
+    private static int FindFeaturedAppsIndex(RibbonControl ribbon)
+    {
+        for (var i = 0; i < ribbon.Tabs.Count; i++)
+        {
+            var title = ribbon.Tabs[i].Title ?? string.Empty;
+            if (title.Contains(FeaturedAppsTitle, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+}
+
+internal sealed class RibbonCommandHandler : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter)
+    {
+        var command = parameter switch
+        {
+            string s => s,
+            RibbonButton button => button.CommandParameter as string,
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return;
+        }
+
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
+        doc.SendStringToExecute(command, true, false, true);
+    }
+
+    public void RaiseCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}

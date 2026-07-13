@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+  SchemaVersion="1.0"
+  AutodeskProduct="BricsCAD"
+  ProductType="Application"
+  Name="TCM-INZINJERING"
+  Description="TCM-INZINJERING - putevi, osovina i stacionaza."
+  AppVersion="1.1.0">
+  <CompanyDetails
+    Name="TCM-INZINJERING"
+    Url="https://github.com/mungosthe-cpu/TCM-INZINJERING"
+    Email="" />
+
+  <Components Description="BricsCAD 2022+">
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="Bricscad"
+      SeriesMin="V22"
+      SeriesMax="V99" />
+    <ComponentEntry
+      AppName="TcmInzenjering"
+      AppType=".NET"
+      ModuleName="./Contents/net48/TcmInzenjering.Plugin.Legacy.dll"
+      AppDescription="TCM-INZINJERING - putevi i osovina"
+      LoadOnAutoCADStartup="True">
+      <Commands GroupName="TCM-INZINJERING">
+        <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
+        <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
+        <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMRIBBON" Local="TCMRIBBON" />
+        <Command Global="TCMHELLO" Local="TCMHELLO" />
+        <Command Global="TCMINFO" Local="TCMINFO" />
+        <Command Global="TCMUPDATE" Local="TCMUPDATE" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

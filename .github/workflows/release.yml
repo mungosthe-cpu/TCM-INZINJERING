@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            4.8
+
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build release
+        shell: pwsh
+        run: |
+          ./scripts/build-release.ps1 -Version ${{ steps.version.outputs.value }}
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/TCM-INZINJERING-Setup-${{ steps.version.outputs.value }}.exe
+            dist/update-manifest.json
+            dist/TCM-INZINJERING-${{ steps.version.outputs.value }}.zip
