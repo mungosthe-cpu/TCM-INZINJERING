@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TcmInzenjering.Plugin.Update;
 
@@ -21,6 +22,11 @@ internal static class UpdateChecker
         Timeout = TimeSpan.FromSeconds(15)
     };
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private static DateTime _lastCheckUtc = DateTime.MinValue;
     private static UpdateCheckResult? _cachedResult;
 
@@ -38,7 +44,7 @@ internal static class UpdateChecker
             using var response = await HttpClient.GetAsync(PluginInfo.UpdateManifestUrl).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            var manifest = await JsonSerializer.DeserializeAsync<UpdateManifest>(stream).ConfigureAwait(false);
+            var manifest = await JsonSerializer.DeserializeAsync<UpdateManifest>(stream, JsonOptions).ConfigureAwait(false);
             if (manifest is null || string.IsNullOrWhiteSpace(manifest.Version))
             {
                 return CacheResult(new UpdateCheckResult

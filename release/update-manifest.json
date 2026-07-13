@@ -1,6 +1,6 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "releaseDate": "2026-07-13",
-  "downloadUrl": "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.1.exe",
-  "notes": "Ispravljene ribbon ikone i dugme Nadogradnja na tabu. Komanda TCMUPDATE."
+  "downloadUrl": "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.2.exe",
+  "notes": "Ispravka citanja update manifesta (JSON camelCase)."
 }
