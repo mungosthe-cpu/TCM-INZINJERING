@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>TcmInzenjering.Plugin</RootNamespace>
-    <UseWPF>true</UseWPF>
+    <UseWPF Condition="'$(TargetFramework)' != 'net48'">true</UseWPF>
     <PlatformTarget>x64</PlatformTarget>
     <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
@@ -15,7 +15,10 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
     <AssemblyName>TcmInzenjering.Plugin.Legacy</AssemblyName>
     <AutoCADPath Condition="'$(AutoCADPath)' == ''">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADPath>
+    <BricsCADPath Condition="'$(BricsCADPath)' == ''">$(MSBuildProjectDirectory)\..\lib\BricsCAD</BricsCADPath>
+    <UseBricsCAD Condition="'$(UseBricsCAD)' == ''">false</UseBricsCAD>
     <BundleDllSubdir>net48</BundleDllSubdir>
+    <DefineConstants Condition="'$(UseBricsCAD)' == 'true'">$(DefineConstants);BRICSCAD</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
@@ -29,7 +32,33 @@
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48' and '$(UseBricsCAD)' == 'true'">
+    <Reference Include="BrxMgd">
+      <HintPath>$(BricsCADPath)\BrxMgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="TD_Mgd">
+      <HintPath>$(BricsCADPath)\TD_Mgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48' and '$(UseBricsCAD)' != 'true'">
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(AutoCADPath)\accoremgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(AutoCADPath)\acdbmgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(AutoCADPath)\acmgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
     <Reference Include="AcCoreMgd">
       <HintPath>$(AutoCADPath)\accoremgd.dll</HintPath>
       <Private>False</Private>
@@ -48,9 +77,18 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Page Remove="Dialogs\**\*.xaml" />
+    <Compile Remove="Dialogs\**\*.xaml.cs" />
+    <Compile Remove="Ribbon\RibbonBuilder.cs" />
+    <Compile Remove="Ribbon\RibbonIconLoader.cs" />
+  </ItemGroup>
+
   <PropertyGroup>
     <BundleDir>$(MSBuildProjectDirectory)\..\TcmInzenjering.bundle</BundleDir>
+    <BricsBundleDir>$(MSBuildProjectDirectory)\..\TcmInzenjering.BricsCAD.bundle</BricsBundleDir>
     <BundleContents>$(BundleDir)\Contents</BundleContents>
+    <BricsBundleContents>$(BricsBundleDir)\Contents</BricsBundleContents>
   </PropertyGroup>
 
   <ItemGroup>
@@ -62,6 +100,11 @@
     <MakeDir Directories="$(BundleContents)\$(BundleDllSubdir)\Icons" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(RibbonIcons)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)\Icons" SkipUnchangedFiles="true" />
+
+    <MakeDir Directories="$(BricsBundleContents)\$(BundleDllSubdir)" />
+    <MakeDir Directories="$(BricsBundleContents)\$(BundleDllSubdir)\Icons" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BricsBundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(RibbonIcons)" DestinationFolder="$(BricsBundleContents)\$(BundleDllSubdir)\Icons" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="DeployToApplicationPlugins" AfterTargets="CopyToBundle" Condition="'$(TargetFramework)' == 'net8.0-windows' and '$(DeployPlugin)' == 'true'">

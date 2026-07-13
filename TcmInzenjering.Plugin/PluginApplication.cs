@@ -1,6 +1,8 @@
 using Autodesk.AutoCAD.Runtime;
-using TcmInzenjering.Plugin.Ribbon;
 using TcmInzenjering.Plugin.Update;
+#if NET8_0_OR_GREATER
+using TcmInzenjering.Plugin.Ribbon;
+#endif
 
 [assembly: ExtensionApplication(typeof(TcmInzenjering.Plugin.PluginApplication))]
 [assembly: CommandClass(typeof(TcmInzenjering.Plugin.Commands))]
@@ -12,12 +14,15 @@ namespace TcmInzenjering.Plugin;
 
 public sealed class PluginApplication : IExtensionApplication
 {
+#if NET8_0_OR_GREATER
     private static bool _ribbonInitialized;
+#endif
 
     public void Initialize()
     {
         try
         {
+#if NET8_0_OR_GREATER
             if (Autodesk.Windows.ComponentManager.Ribbon is not null)
             {
                 EnsureRibbon();
@@ -29,6 +34,7 @@ public sealed class PluginApplication : IExtensionApplication
             }
 
             Autodesk.AutoCAD.ApplicationServices.Core.Application.SystemVariableChanged += OnSystemVariableChanged;
+#endif
             Roads.AxisChangeMonitor.Initialize();
             WriteMessage($"TCM-INZINJERING v{PluginInfo.Version}: plugin ucitan. Komande: TCMPLO2TAN, TCMUPDATE, TCMSTACAZUR");
             System.Threading.Tasks.Task.Run(UpdateCommands.CheckForUpdatesOnStartup);
@@ -41,12 +47,15 @@ public sealed class PluginApplication : IExtensionApplication
 
     public void Terminate()
     {
+#if NET8_0_OR_GREATER
         Autodesk.Windows.ComponentManager.ItemInitialized -= OnComponentManagerItemInitialized;
         Autodesk.AutoCAD.ApplicationServices.Core.Application.Idle -= OnIdleOnce;
         Autodesk.AutoCAD.ApplicationServices.Core.Application.SystemVariableChanged -= OnSystemVariableChanged;
+#endif
         Roads.AxisChangeMonitor.Terminate();
     }
 
+#if NET8_0_OR_GREATER
     private static void OnComponentManagerItemInitialized(object? sender, Autodesk.Windows.RibbonItemEventArgs e)
     {
         if (Autodesk.Windows.ComponentManager.Ribbon is null)
@@ -99,6 +108,12 @@ public sealed class PluginApplication : IExtensionApplication
             WriteMessage($"TCM-INZINJERING: greska pri kreiranju ribbon taba - {ex.Message}");
         }
     }
+#else
+    internal static void EnsureRibbon()
+    {
+        WriteMessage("TCM-INZINJERING: Ribbon nije dostupan u legacy/BricsCAD verziji. Koristite komande iz komandne linije.");
+    }
+#endif
 
     private static void WriteMessage(string message)
     {
@@ -109,7 +124,7 @@ public sealed class PluginApplication : IExtensionApplication
         }
         catch
         {
-            // AutoCAD jos nije spreman za ispis u komandnu liniju.
+            // CAD host jos nije spreman za ispis u komandnu liniju.
         }
     }
 }

@@ -16,4 +16,10 @@ public static class PluginInfo
         $"https://github.com/{GitHubOwner}/{GitHubRepo}/releases/latest";
 
     public static string Version => typeof(PluginInfo).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+
+    public const string AuthorName = "Dragan Todorović";
+    public const string AuthorCity = "Ruma";
+    public const string AuthorPhone = "+381 63/550450";
+    public const string AuthorEmail = "dragan.todorovic@hotmail.com";
+    public const string AuthorFacebookUrl = "https://www.facebook.com/search/top?q=Dragan%20Todorovic%20Ruma";
 }

@@ -2,7 +2,9 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
+#if NET8_0_OR_GREATER
 using TcmInzenjering.Plugin.Dialogs;
+#endif
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace TcmInzenjering.Plugin.Roads;
@@ -37,6 +39,28 @@ public sealed class RoadCommands
                 previewTr.Commit();
             }
 
+#if NET48
+            if (!LegacyPlo2TanPrompt.TryCollect(ed, polylineLength, out var axisName, out var curveRadius, out var textHeight, out var stationOptions))
+            {
+                ed.WriteMessage("\nTCM-INZINJERING: komanda otkazana.");
+                return;
+            }
+
+            using var tr = db.TransactionManager.StartTransaction();
+            var polyline = (Polyline)tr.GetObject(polylineId, OpenMode.ForRead);
+            var axis = PolylineToTangentConverter.Convert(polyline, curveRadius, stationOptions.StartStation, axisName);
+            var modelSpace = (BlockTableRecord)tr.GetObject(
+                SymbolUtilityServices.GetBlockModelSpaceId(db),
+                OpenMode.ForWrite);
+
+            DrawAxis(tr, modelSpace, axis);
+            var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, axis, stationOptions);
+            var radiusCount = RoadDrawing.DrawRadiusLabels(tr, modelSpace, axis, textHeight);
+            RoadDrawing.SaveAxisMetadata(tr, db, axis, stationOptions, curveRadius);
+            tr.Commit();
+
+            PrintAxisReport(ed, axis, labelCount, radiusCount);
+#else
             var dialog = new Plo2TanDialog(polylineLength);
             var accepted = AcApp.ShowModalWindow(dialog) == true;
             if (!accepted)
@@ -63,6 +87,7 @@ public sealed class RoadCommands
             tr.Commit();
 
             PrintAxisReport(ed, axis, labelCount, radiusCount);
+#endif
         }
         catch (Autodesk.AutoCAD.Runtime.Exception acEx)
         {

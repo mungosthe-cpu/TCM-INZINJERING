@@ -55,6 +55,7 @@ internal static class Program
             }
 
             RegisterAutocadProfiles(targets.Where(t => t.Kind == CadHostKind.AutoCAD));
+            RegisterBricsCadProfiles(targets.Where(t => t.Kind == CadHostKind.BricsCAD));
             Console.WriteLine();
             Console.WriteLine("Instalacija zavrsena.");
             Console.WriteLine("Restartujte AutoCAD/BricsCAD. Komanda za proveru nadogradnje: TCMUPDATE");
@@ -116,6 +117,30 @@ internal static class Program
             try
             {
                 RegistryInstaller.RegisterAutocadApplication(target.Series, target.ProductCode, dllPath);
+                Console.WriteLine($"Registry: {target.Series}\\{target.ProductCode}\\Applications\\{AppName}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Registry preskocen ({target.ProductCode}): {ex.Message}");
+            }
+        }
+    }
+
+    private static void RegisterBricsCadProfiles(IEnumerable<CadHostTarget> bricsTargets)
+    {
+        var bundleRoot = GetBricsInstallTargets().First();
+        var dllPath = Path.Combine(bundleRoot, "Contents", "net48", "TcmInzenjering.Plugin.Legacy.dll");
+        if (!File.Exists(dllPath))
+        {
+            Console.WriteLine($"Upozorenje: BricsCAD DLL nije pronadjen ({dllPath}). Plugin nece raditi u BricsCAD-u.");
+            return;
+        }
+
+        foreach (var target in bricsTargets)
+        {
+            try
+            {
+                RegistryInstaller.RegisterBricsCadApplication(target.Series, target.ProductCode, dllPath);
                 Console.WriteLine($"Registry: {target.Series}\\{target.ProductCode}\\Applications\\{AppName}");
             }
             catch (Exception ex)

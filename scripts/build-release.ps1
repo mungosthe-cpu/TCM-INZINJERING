@@ -29,20 +29,72 @@ Write-Host "1/4 Build plugina (net8)..." -ForegroundColor Yellow
 dotnet build $pluginProject -c $Configuration /p:Version=$Version
 if ($LASTEXITCODE -ne 0) { throw "Build plugina nije uspeo." }
 
+function Invoke-LegacyBuild {
+    param(
+        [string]$PluginProject,
+        [string]$Configuration,
+        [string]$Version,
+        [switch]$UseBricsCAD,
+        [string]$BricsCADPath = "",
+        [string]$AutoCADPath = ""
+    )
+
+    $args = @(
+        "build", $PluginProject,
+        "-c", $Configuration,
+        "-f", "net48",
+        "/p:TargetFrameworks=net48",
+        "/p:Version=$Version"
+    )
+
+    if ($UseBricsCAD) {
+        $args += "/p:UseBricsCAD=true", "/p:BricsCADPath=$BricsCADPath"
+    }
+    elseif ($AutoCADPath) {
+        $args += "/p:AutoCADPath=$AutoCADPath"
+    }
+
+    dotnet @args
+}
+
 $legacyAutoCad = @("2024", "2023", "2022", "2021", "2020") |
     ForEach-Object { "C:\Program Files\Autodesk\AutoCAD $_" } |
     Where-Object { Test-Path $_ } |
     Select-Object -First 1
 
+$bricsInstall = Get-ChildItem "C:\Program Files\Bricsys" -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like "BricsCAD V*" } |
+    Sort-Object Name -Descending |
+    Select-Object -First 1
+
+$legacyBuilt = $false
 if ($legacyAutoCad) {
-    Write-Host "1b/4 Build legacy plugina (net48) sa: $legacyAutoCad" -ForegroundColor Yellow
-    dotnet build $pluginProject -c $Configuration /p:Version=$Version /p:BuildLegacy=true /p:AutoCADPath="$legacyAutoCad"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Upozorenje: legacy build nije uspeo. AutoCAD 2020-2024 DLL nece biti u paketu." -ForegroundColor Yellow
-    }
+    Write-Host "1b/4 Build legacy plugina (net48) za AutoCAD sa: $legacyAutoCad" -ForegroundColor Yellow
+    Invoke-LegacyBuild -PluginProject $pluginProject -Configuration $Configuration -Version $Version -AutoCADPath $legacyAutoCad
+    if ($LASTEXITCODE -eq 0) { $legacyBuilt = $true }
+    else { Write-Host "Upozorenje: legacy AutoCAD build nije uspeo." -ForegroundColor Yellow }
+}
+elseif ($bricsInstall) {
+    Write-Host "1b/4 Build legacy plugina (net48) za BricsCAD sa: $($bricsInstall.FullName)" -ForegroundColor Yellow
+    & (Join-Path $root "scripts\copy-bricscad-libs.ps1") -SourcePath $bricsInstall.FullName
+    Invoke-LegacyBuild -PluginProject $pluginProject -Configuration $Configuration -Version $Version -UseBricsCAD -BricsCADPath (Join-Path $root "lib\BricsCAD")
+    if ($LASTEXITCODE -eq 0) { $legacyBuilt = $true }
+    else { Write-Host "Upozorenje: legacy BricsCAD build nije uspeo." -ForegroundColor Yellow }
+}
+elseif (Test-Path (Join-Path $root "lib\BricsCAD\BrxMgd.dll")) {
+    Write-Host "1b/4 Build legacy plugina (net48) za BricsCAD (lib/BricsCAD)..." -ForegroundColor Yellow
+    Invoke-LegacyBuild -PluginProject $pluginProject -Configuration $Configuration -Version $Version -UseBricsCAD -BricsCADPath (Join-Path $root "lib\BricsCAD")
+    if ($LASTEXITCODE -eq 0) { $legacyBuilt = $true }
+    else { Write-Host "Upozorenje: legacy BricsCAD build nije uspeo." -ForegroundColor Yellow }
 }
 else {
-    Write-Host "Legacy build preskocen (nema AutoCAD 2020-2024 na build masini)." -ForegroundColor Yellow
+    Write-Host "Legacy build preskocen (nema AutoCAD 2020-2024 ni BricsCAD referenci)." -ForegroundColor Yellow
+    Write-Host "  Za BricsCAD kopirajte sa racunara gde je instaliran BricsCAD:" -ForegroundColor Yellow
+    Write-Host "  .\scripts\copy-bricscad-libs.ps1 -SourcePath 'C:\Program Files\Bricsys\BricsCAD V25 en_US'" -ForegroundColor Yellow
+}
+
+if (-not $legacyBuilt) {
+    Write-Host "Upozorenje: net48 DLL nije izgradjen. BricsCAD i AutoCAD 2020-2024 nece raditi." -ForegroundColor Yellow
 }
 
 Write-Host "2/4 Priprema payload bundle paketa..." -ForegroundColor Yellow
@@ -51,11 +103,17 @@ $bricsSource = Join-Path $root "TcmInzenjering.BricsCAD.bundle"
 Copy-Item $bundleSource (Join-Path $payloadDir "TcmInzenjering.bundle") -Recurse -Force
 Copy-Item $bricsSource (Join-Path $payloadDir "TcmInzenjering.BricsCAD.bundle") -Recurse -Force
 
+$bricsLegacyDll = Join-Path $payloadDir "TcmInzenjering.BricsCAD.bundle\Contents\net48\TcmInzenjering.Plugin.Legacy.dll"
+if (-not (Test-Path $bricsLegacyDll)) {
+    Write-Host "Upozorenje: BricsCAD bundle nema net48 DLL ($bricsLegacyDll)." -ForegroundColor Yellow
+    Write-Host "  AutoCAD 2025/2026 ce raditi. Za BricsCAD pokrenite build sa lib\BricsCAD referencama." -ForegroundColor Yellow
+}
+
 $manifestPath = Join-Path $root "release\update-manifest.json"
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-$manifest.version = $Version
-$manifest.downloadUrl = "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/$setupName"
-$manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $distDir "update-manifest.json") -Encoding UTF8
+$manifest.Version = $Version
+$manifest.DownloadUrl = "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/$setupName"
+$manifest | ConvertTo-Json -Depth 4 | Set-Content $manifestPath -Encoding UTF8
 Copy-Item $manifestPath (Join-Path $distDir "update-manifest.json") -Force
 
 Write-Host "3/4 Publish instalera (payload ugradjen u EXE)..." -ForegroundColor Yellow

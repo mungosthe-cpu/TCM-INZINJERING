@@ -91,26 +91,32 @@ internal static class RoadDrawing
             }
 
             var sideNormal = GetSideNormal(direction.Value, options.LabelSideSign);
-            var tickStart = point.Value - sideNormal * (options.TickLength / 2.0);
-            var tickEnd = point.Value + sideNormal * (options.TickLength / 2.0);
+            var halfTick = options.TickLength / 2.0;
+
+            // Tick je centriran na osi i ide popreko nje.
+            var tickStart = point.Value - sideNormal * halfTick;
+            var tickEnd = point.Value + sideNormal * halfTick;
 
             var tick = new Line(tickStart, tickEnd)
             {
-                Layer = StationLayerName
+                Layer = StationLayerName,
+                Color = Color.FromColorIndex(ColorMethod.ByLayer, 256)
             };
             modelSpace.AppendEntity(tick);
             tr.AddNewlyCreatedDBObject(tick, true);
             RoadXData.AttachStationLabel(tick, axis.Name, RoadXData.RoleTick, station);
 
-            var textOffset = options.TickLength / 2.0 + options.TextHeight * 0.6;
-            var textPosition = point.Value + sideNormal * textOffset;
+            var textGap = options.TextHeight * 0.35;
+            var textPosition = tickEnd + sideNormal * textGap;
+            var textRotation = GetReadableTextRotation(sideNormal);
             var text = new DBText
             {
                 Position = textPosition,
                 Height = options.TextHeight,
                 TextString = FormatStation(station, options.Prefix),
                 Layer = StationLayerName,
-                Rotation = Math.Atan2(sideNormal.Y, sideNormal.X)
+                Color = Color.FromColorIndex(ColorMethod.ByLayer, 256),
+                Rotation = textRotation
             };
             modelSpace.AppendEntity(text);
             tr.AddNewlyCreatedDBObject(text, true);
@@ -420,10 +426,25 @@ internal static class RoadDrawing
 
     public static string FormatStation(double station, string prefix)
     {
-        prefix ??= string.Empty;
         var kilometers = (int)Math.Floor(station / 1000.0);
         var meters = station - kilometers * 1000.0;
-        return $"{prefix}{kilometers}+{meters:000.00}";
+        var labelPrefix = string.IsNullOrWhiteSpace(prefix) ? "STA" : prefix.Trim();
+        return $"{labelPrefix} {kilometers}+{meters:000.00}";
+    }
+
+    private static double GetReadableTextRotation(Vector3d sideNormal)
+    {
+        var rotation = Math.Atan2(sideNormal.Y, sideNormal.X);
+        if (rotation > Math.PI / 2.0)
+        {
+            rotation -= Math.PI;
+        }
+        else if (rotation < -Math.PI / 2.0)
+        {
+            rotation += Math.PI;
+        }
+
+        return rotation;
     }
 
     public static string FormatRadius(double radius) => $"R={radius:F2}";

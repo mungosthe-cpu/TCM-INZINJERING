@@ -5,18 +5,18 @@
   ProductType="Application"
   Name="TCM-INZINJERING"
   Description="TCM-INZINJERING - putevi, osovina i stacionaza."
-  AppVersion="1.1.1">
+  AppVersion="1.1.4">
   <CompanyDetails
     Name="TCM-INZINJERING"
     Url="https://github.com/mungosthe-cpu/TCM-INZINJERING"
     Email="" />
 
-  <Components Description="BricsCAD 2022+">
+  <Components Description="BricsCAD 2022-2025 (.NET Framework)">
     <RuntimeRequirements
       OS="Win64"
       Platform="Bricscad"
       SeriesMin="V22"
-      SeriesMax="V99" />
+      SeriesMax="V25" />
     <ComponentEntry
       AppName="TcmInzenjering"
       AppType=".NET"
@@ -28,7 +28,30 @@
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
-        <Command Global="TCMRIBBON" Local="TCMRIBBON" />
+        <Command Global="TCMHELLO" Local="TCMHELLO" />
+        <Command Global="TCMINFO" Local="TCMINFO" />
+        <Command Global="TCMUPDATE" Local="TCMUPDATE" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+
+  <Components Description="BricsCAD 2026+ (.NET 8)">
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="Bricscad"
+      SeriesMin="V26"
+      SeriesMax="V99" />
+    <ComponentEntry
+      AppName="TcmInzenjering"
+      AppType=".NET"
+      ModuleName="./Contents/net8/TcmInzenjering.Plugin.dll"
+      AppDescription="TCM-INZINJERING - putevi i osovina"
+      LoadOnAutoCADStartup="True">
+      <Commands GroupName="TCM-INZINJERING">
+        <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
+        <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
+        <Command Global="TCMOSINFO" Local="TCMOSINFO" />
         <Command Global="TCMHELLO" Local="TCMHELLO" />
         <Command Global="TCMINFO" Local="TCMINFO" />
         <Command Global="TCMUPDATE" Local="TCMUPDATE" />

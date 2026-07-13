@@ -3,6 +3,7 @@ bin/
 obj/
 dist/
 TcmInzenjering.Setup/payload/
+lib/BricsCAD/*.dll
 
 # Visual Studio / Rider
 .vs/

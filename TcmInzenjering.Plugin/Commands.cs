@@ -21,7 +21,23 @@ public sealed class Commands
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         var ed = doc.Editor;
+#if NET8_0_OR_GREATER
+        try
+        {
+            var dialog = new Dialogs.AboutDialog();
+            AcApp.ShowModalWindow(dialog);
+            return;
+        }
+        catch
+        {
+            // Ako WPF prozor ne moze da se otvori, ispisujemo info u komandnu liniju.
+        }
+#endif
         ed.WriteMessage($"\nTCM-INZINJERING v{PluginInfo.Version} - AutoCAD/BricsCAD plugin za puteve i osovinsku geometriju.");
+        ed.WriteMessage($"\n  Autor   : {PluginInfo.AuthorName}, {PluginInfo.AuthorCity}");
+        ed.WriteMessage($"\n  Telefon : {PluginInfo.AuthorPhone}");
+        ed.WriteMessage($"\n  E-mail  : {PluginInfo.AuthorEmail}");
+        ed.WriteMessage($"\n  Facebook: {PluginInfo.AuthorFacebookUrl}");
         ed.WriteMessage($"\n  Provera nadogradnje: TCMUPDATE");
         ed.WriteMessage($"\n  GitHub: {PluginInfo.ReleasesPageUrl}");
     }
@@ -29,8 +45,13 @@ public sealed class Commands
     [CommandMethod("TCMRIBBON", CommandFlags.Modal)]
     public void RefreshRibbon()
     {
+#if NET8_0_OR_GREATER
         PluginApplication.EnsureRibbon();
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon tab je osvezen.");
+#else
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon nije dostupan. Koristite komande TCMPLO2TAN, TCMSTACOZN, TCMUPDATE.");
+#endif
     }
 }

@@ -140,4 +140,19 @@ internal static class RegistryInstaller
     key.SetValue("LOADER", dllPath, RegistryValueKind.String);
     key.SetValue("MANAGED", 1, RegistryValueKind.DWord);
   }
+
+  public static void RegisterBricsCadApplication(string series, string locale, string dllPath)
+  {
+    var keyPath = $@"Software\Bricsys\BricsCAD\{series}\{locale}\Applications\{AppName}";
+    using var key = Registry.CurrentUser.CreateSubKey(keyPath, writable: true);
+    if (key is null)
+    {
+      throw new InvalidOperationException($"Ne mogu da otvorim registry kljuc: {keyPath}");
+    }
+
+    key.SetValue("DESCRIPTION", Description, RegistryValueKind.String);
+    key.SetValue("LOADCTRLS", 2, RegistryValueKind.DWord);
+    key.SetValue("LOADER", dllPath, RegistryValueKind.String);
+    key.SetValue("MANAGED", 1, RegistryValueKind.DWord);
+  }
 }
