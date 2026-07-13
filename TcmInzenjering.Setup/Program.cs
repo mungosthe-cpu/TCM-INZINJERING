@@ -151,13 +151,16 @@ internal static class Program
 
     private static string ResolvePayloadRoot()
     {
+        // Single-file publish (IncludeAllContentForSelfExtract) extracts payload into BaseDirectory.
         var exeDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var candidates = new[]
         {
             Path.Combine(exeDir, "payload"),
+            exeDir,
             Path.Combine(exeDir, "..", "payload"),
             Path.Combine(exeDir, ".."),
-            Directory.GetCurrentDirectory()
+            Directory.GetCurrentDirectory(),
+            Path.Combine(Directory.GetCurrentDirectory(), "payload")
         };
 
         foreach (var candidate in candidates)

@@ -58,7 +58,13 @@ $manifest.downloadUrl = "https://github.com/mungosthe-cpu/TCM-INZINJERING/releas
 $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $distDir "update-manifest.json") -Encoding UTF8
 Copy-Item $manifestPath (Join-Path $distDir "update-manifest.json") -Force
 
-Write-Host "3/4 Publish instalera..." -ForegroundColor Yellow
+Write-Host "3/4 Publish instalera (payload ugradjen u EXE)..." -ForegroundColor Yellow
+$setupPayloadDir = Join-Path $root "TcmInzenjering.Setup\payload"
+if (Test-Path $setupPayloadDir) {
+    Remove-Item $setupPayloadDir -Recurse -Force
+}
+Copy-Item $payloadDir $setupPayloadDir -Recurse -Force
+
 dotnet publish $setupProject -c $Configuration -r win-x64 --self-contained true /p:Version=$Version /p:PublishSingleFile=true
 if ($LASTEXITCODE -ne 0) { throw "Publish instalera nije uspeo." }
 
@@ -67,16 +73,12 @@ if (-not (Test-Path $publishedSetup)) {
     throw "Installer EXE nije pronadjen: $publishedSetup"
 }
 
-$publishDir = Split-Path $publishedSetup -Parent
-Copy-Item $payloadDir (Join-Path $publishDir "payload") -Recurse -Force
-
 Write-Host "4/4 Pakovanje distribucije..." -ForegroundColor Yellow
 Copy-Item $publishedSetup (Join-Path $distDir $setupName) -Force
-Copy-Item (Join-Path $publishDir "payload") (Join-Path $distDir "payload") -Recurse -Force
 
 $zipPath = Join-Path $distDir "TCM-INZINJERING-$Version.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-Compress-Archive -Path (Join-Path $distDir $setupName), (Join-Path $distDir "payload"), (Join-Path $distDir "update-manifest.json") -DestinationPath $zipPath
+Compress-Archive -Path (Join-Path $distDir $setupName), (Join-Path $distDir "update-manifest.json") -DestinationPath $zipPath
 
 Write-Host ""
 Write-Host "Release spreman:" -ForegroundColor Green

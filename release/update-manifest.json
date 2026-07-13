@@ -1,6 +1,6 @@
 {
-  "Version": "1.1.2",
+  "Version": "1.1.3",
   "ReleaseDate": "2026-07-13",
-  "DownloadUrl": "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.2.exe",
-  "Notes": "Ispravka citanja update manifesta i ribbon ikona."
+  "DownloadUrl": "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.3.exe",
+  "Notes": "Samostalan EXE installer — bundle ugradjen u instalaciju, nije potreban poseban payload folder."
 }

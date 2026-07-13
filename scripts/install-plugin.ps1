@@ -46,6 +46,22 @@ function Deploy-Bundle {
 
 Write-Host "TCM-INZINJERING: instalacija plugina..." -ForegroundColor Cyan
 
+function Remove-LegacyBundleFiles {
+    param([string]$BundleRoot)
+
+    $legacyDll = Join-Path $BundleRoot "Contents\TcmInzenjering.Plugin.dll"
+    if (Test-Path $legacyDll) {
+        Remove-Item $legacyDll -Force
+        Write-Host "  Uklonjen stari DLL: Contents\TcmInzenjering.Plugin.dll" -ForegroundColor DarkGray
+    }
+
+    $legacyIcons = Join-Path $BundleRoot "Contents\Icons"
+    if (Test-Path $legacyIcons) {
+        Remove-Item $legacyIcons -Recurse -Force
+        Write-Host "  Uklonjen stari folder: Contents\Icons" -ForegroundColor DarkGray
+    }
+}
+
 $deployTargets = @(
     (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName"),
     "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName",
@@ -55,8 +71,15 @@ $deployTargets = @(
 )
 
 Deploy-Bundle $BundleSource (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName") | Out-Null
+Remove-LegacyBundleFiles (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName")
 Deploy-Bundle $BundleSource "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName" | Out-Null
+if (Test-Path "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName") {
+    Remove-LegacyBundleFiles "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName"
+}
 Deploy-Bundle $BundleSource (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName") | Out-Null
+if (Test-Path (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName")) {
+    Remove-LegacyBundleFiles (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName")
+}
 if (Test-Path $BricsBundleSource) {
     Deploy-Bundle $BricsBundleSource (Join-Path $env:APPDATA "Bricsys\ApplicationPlugins\$bricsBundleName") | Out-Null
     Deploy-Bundle $BricsBundleSource "C:\Program Files\Bricsys\ApplicationPlugins\$bricsBundleName" | Out-Null
