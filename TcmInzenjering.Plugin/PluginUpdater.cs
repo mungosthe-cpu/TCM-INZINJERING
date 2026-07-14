@@ -1,10 +1,8 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net.Http;
 using System.Text;
-#if NET8_0_OR_GREATER
-using System.Windows;
-#elif !BRICSCAD
+using System.Text.Json;
+#if !BRICSCAD
 using System.Windows;
 #endif
 using TcmInzenjering.Plugin.Update;
@@ -12,22 +10,15 @@ using TcmInzenjering.Plugin.Update;
 namespace TcmInzenjering.Plugin;
 
 /// <summary>
-/// Preuzima setup EXE i pokrece spoljasnji skript koji ceka zatvaranje CAD-a pa instalira.
-/// DLL ostaje zakljucan dok je AutoCAD otvoren, zato instalacija mora da krene van procesa.
+/// Pokrece spoljasnji update proces (preuzimanje + progress bar + instalacija).
+/// Preuzimanje ne radi u AutoCAD procesu da UI ne izgleda "zamrznut".
 /// </summary>
 internal static class PluginUpdater
 {
-    private static readonly HttpClient DownloadClient = CreateDownloadClient();
-
-    private static HttpClient CreateDownloadClient()
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        var client = new HttpClient
-        {
-            Timeout = TimeSpan.FromMinutes(15)
-        };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("TcmInzenjering-Plugin-Updater");
-        return client;
-    }
+        WriteIndented = true
+    };
 
     public static bool TryStartUpdate(UpdateCheckResult result, out string message)
     {
@@ -49,8 +40,12 @@ internal static class PluginUpdater
         var answer = MessageBox.Show(
             $"Dostupna je nova verzija {result.LatestVersion} (trenutna {result.CurrentVersion})." +
             Environment.NewLine + Environment.NewLine +
-            "Plugin ce preuzeti installer, a zatim ce sacekati da zatvorite AutoCAD/BricsCAD " +
-            "pre instalacije (DLL je zakljucan dok je program otvoren)." +
+            (string.IsNullOrWhiteSpace(result.ReleaseNotes)
+                ? string.Empty
+                : "Novo u ovoj verziji:" + Environment.NewLine + result.ReleaseNotes + Environment.NewLine + Environment.NewLine) +
+            "Preuzimanje ce ici u posebnom prozoru (sa progress bar-om), tako da AutoCAD nece biti blokiran." +
+            Environment.NewLine + Environment.NewLine +
+            "Nakon preuzimanja zatvorite AutoCAD da bi se instalacija zavrsila." +
             Environment.NewLine + Environment.NewLine +
             "Nastaviti?",
             "TCM-INZINJERING - Nadogradnja",
@@ -62,19 +57,25 @@ internal static class PluginUpdater
             message = "Nadogradnja otkazana.";
             return false;
         }
-#else
-        // BricsCAD / legacy CLI: potvrda preko UpdateCommands.
 #endif
 
         try
         {
             var version = result.LatestVersion ?? "latest";
             var setupPath = Path.Combine(Path.GetTempPath(), $"TCM-INZINJERING-Setup-{version}.exe");
-            message = "Preuzimanje instalera...";
-            DownloadFile(result.DownloadUrl!, setupPath);
-
+            var metaPath = Path.Combine(Path.GetTempPath(), "TcmInzenjering-update-meta.json");
             var scriptPath = Path.Combine(Path.GetTempPath(), "TcmInzenjering-update.ps1");
-            File.WriteAllText(scriptPath, BuildUpdateScript(setupPath, version), Encoding.UTF8);
+
+            var meta = new UpdateMeta
+            {
+                Version = version,
+                CurrentVersion = result.CurrentVersion,
+                DownloadUrl = result.DownloadUrl!,
+                ReleaseNotes = result.ReleaseNotes ?? string.Empty,
+                SetupPath = setupPath
+            };
+            File.WriteAllText(metaPath, JsonSerializer.Serialize(meta, JsonOptions), Encoding.UTF8);
+            File.WriteAllText(scriptPath, BuildUpdateScript(metaPath), Encoding.UTF8);
 
             var start = new ProcessStartInfo
             {
@@ -86,8 +87,8 @@ internal static class PluginUpdater
             Process.Start(start);
 
             message =
-                "Installer je preuzet. Zatvorite AutoCAD/BricsCAD — instalacija ce se pokrenuti " +
-                "automatski cim se program zatvori.";
+                "Pokrenut je prozor preuzimanja (progress bar). AutoCAD mozete nastaviti da koristite. " +
+                "Kada se zavrsi preuzimanje, zatvorite AutoCAD — instalacija ce se pokrenuti automatski.";
             return true;
         }
         catch (Exception ex)
@@ -97,27 +98,15 @@ internal static class PluginUpdater
         }
     }
 
-    private static void DownloadFile(string url, string destinationPath)
+    private static string BuildUpdateScript(string metaPath)
     {
-        using var response = DownloadClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead)
-            .GetAwaiter()
-            .GetResult();
-        response.EnsureSuccessStatusCode();
-
-        using var input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-        using var output = File.Create(destinationPath);
-        input.CopyTo(output);
-    }
-
-    private static string BuildUpdateScript(string setupPath, string version)
-    {
-        var escapedSetup = setupPath.Replace("'", "''");
+        var escapedMeta = metaPath.Replace("'", "''");
         return $$"""
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
-$ErrorActionPreference = "Continue"
+Add-Type -AssemblyName System.Drawing | Out-Null
+$ErrorActionPreference = "Stop"
 $title = "TCM-INZINJERING - Nadogradnja"
-$setup = '{{escapedSetup}}'
-$version = '{{version.Replace("'", "''")}}'
+$metaPath = '{{escapedMeta}}'
 $nl = [Environment]::NewLine
 
 function Show-Msg([string]$msg, [string]$icon = "Info") {
@@ -131,6 +120,117 @@ function Show-Msg([string]$msg, [string]$icon = "Info") {
 
 function Get-CadRunning {
   @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^(acad|bricscad)$' })
+}
+
+function Format-Bytes([long]$bytes) {
+  if ($bytes -lt 1KB) { return ("{0} B" -f $bytes) }
+  if ($bytes -lt 1MB) { return ("{0:N1} KB" -f ($bytes / 1KB)) }
+  return ("{0:N1} MB" -f ($bytes / 1MB))
+}
+
+if (-not (Test-Path -LiteralPath $metaPath)) {
+  Show-Msg ("Nedostaje meta fajl za nadogradnju:" + $nl + $metaPath) "Error"
+  exit 1
+}
+
+$meta = Get-Content -LiteralPath $metaPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$version = [string]$meta.Version
+$current = [string]$meta.CurrentVersion
+$url = [string]$meta.DownloadUrl
+$notes = [string]$meta.ReleaseNotes
+$setup = [string]$meta.SetupPath
+
+# --- Progress window ---
+$form = New-Object System.Windows.Forms.Form
+$form.Text = $title
+$form.Size = New-Object System.Drawing.Size(520, 180)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.TopMost = $true
+$form.ShowInTaskbar = $true
+
+$label = New-Object System.Windows.Forms.Label
+$label.Location = New-Object System.Drawing.Point(16, 14)
+$label.Size = New-Object System.Drawing.Size(470, 36)
+$label.Text = "Preuzimanje TCM-INZINJERING v$version..."
+
+$bar = New-Object System.Windows.Forms.ProgressBar
+$bar.Location = New-Object System.Drawing.Point(16, 60)
+$bar.Size = New-Object System.Drawing.Size(470, 26)
+$bar.Minimum = 0
+$bar.Maximum = 100
+$bar.Style = "Continuous"
+$bar.Value = 0
+
+$status = New-Object System.Windows.Forms.Label
+$status.Location = New-Object System.Drawing.Point(16, 100)
+$status.Size = New-Object System.Drawing.Size(470, 24)
+$status.Text = "Povezivanje..."
+
+$form.Controls.AddRange(@($label, $bar, $status))
+$form.Show()
+$form.Refresh()
+[System.Windows.Forms.Application]::DoEvents()
+
+try {
+  $req = [System.Net.HttpWebRequest]::Create($url)
+  $req.Method = "GET"
+  $req.UserAgent = "TcmInzenjering-Plugin-Updater"
+  $req.AllowAutoRedirect = $true
+  $req.Timeout = 900000
+  $req.ReadWriteTimeout = 900000
+
+  $resp = $req.GetResponse()
+  $total = $resp.ContentLength
+  $stream = $resp.GetResponseStream()
+  $out = [System.IO.File]::Create($setup)
+  $buffer = New-Object byte[] 81920
+  $readTotal = [long]0
+  $lastUi = [Environment]::TickCount
+
+  if ($total -le 0) {
+    $bar.Style = "Marquee"
+    $bar.MarqueeAnimationSpeed = 30
+    $status.Text = "Preuzimanje u toku..."
+  }
+
+  while (($n = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+    $out.Write($buffer, 0, $n)
+    $readTotal += $n
+    $now = [Environment]::TickCount
+    if (($now - $lastUi) -ge 100 -or $n -lt $buffer.Length) {
+      if ($total -gt 0) {
+        $pct = [int][Math]::Min(100, [Math]::Floor(($readTotal * 100.0) / $total))
+        $bar.Value = $pct
+        $status.Text = ("{0} / {1}  ({2}%)" -f (Format-Bytes $readTotal), (Format-Bytes $total), $pct)
+      } else {
+        $status.Text = ("Preuzeto: {0}" -f (Format-Bytes $readTotal))
+      }
+      [System.Windows.Forms.Application]::DoEvents()
+      $lastUi = $now
+    }
+  }
+
+  $out.Flush()
+  $out.Close()
+  $stream.Close()
+  $resp.Close()
+
+  if ($total -gt 0) { $bar.Value = 100 }
+  $status.Text = "Preuzimanje zavrseno."
+  $label.Text = "Installer v$version je spreman."
+  [System.Windows.Forms.Application]::DoEvents()
+  Start-Sleep -Milliseconds 400
+} catch {
+  try { if (Test-Path -LiteralPath $setup) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue } } catch { }
+  $form.Close()
+  Show-Msg ("Greska pri preuzimanju:" + $nl + $_.Exception.Message) "Error"
+  exit 1
+} finally {
+  try { $form.Close() } catch { }
+  try { $form.Dispose() } catch { }
 }
 
 if (-not (Test-Path -LiteralPath $setup)) {
@@ -170,13 +270,30 @@ try {
     Show-Msg ("Instalacija nije uspela (exit $($p.ExitCode))." + $nl + "Pokrenite installer rucno:" + $nl + $setup) "Error"
     exit $p.ExitCode
   }
-  Show-Msg ("Nadogradnja na v$version je zavrsena." + $nl + $nl + "Pokrenite AutoCAD/BricsCAD ponovo.") "Info"
+
+  $msg = "Uspesno instalirano: TCM-INZINJERING v$version"
+  if ($current) { $msg += $nl + "Prethodna verzija: v$current" }
+  if ($notes) {
+    $msg += $nl + $nl + "Sta je novo:" + $nl + $notes
+  }
+  $msg += $nl + $nl + "Pokrenite AutoCAD/BricsCAD ponovo."
+  Show-Msg $msg "Info"
 } catch {
   Show-Msg ("Greska pri pokretanju instalera:" + $nl + $_.Exception.Message + $nl + $nl + $setup) "Error"
   exit 1
 }
 
+try { Remove-Item -LiteralPath $metaPath -Force -ErrorAction SilentlyContinue } catch { }
 try { Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue } catch { }
 """;
+    }
+
+    private sealed class UpdateMeta
+    {
+        public string Version { get; set; } = string.Empty;
+        public string CurrentVersion { get; set; } = string.Empty;
+        public string DownloadUrl { get; set; } = string.Empty;
+        public string ReleaseNotes { get; set; } = string.Empty;
+        public string SetupPath { get; set; } = string.Empty;
     }
 }

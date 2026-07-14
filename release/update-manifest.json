@@ -1,5 +1,5 @@
 ﻿{
-    "Version":  "1.1.8",
-    "ReleaseNotes":  "AutoCAD 2024: System.Text.Json deps u net48 bundle + ribbon. Ispravka ucitavanja StationFontPreferences.",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.8.exe"
+    "Version":  "1.1.9",
+    "ReleaseNotes":  "Nadogradnja: preuzimanje u posebnom prozoru sa progress bar-om (AutoCAD se ne blokira). Posle instalacije obavestenje o verziji i sta je novo.",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.9.exe"
 }

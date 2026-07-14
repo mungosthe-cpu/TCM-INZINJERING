@@ -45,7 +45,7 @@ public sealed class UpdateCommands
         }
 #endif
 
-        ed.WriteMessage("\nTCM-INZINJERING: preuzimanje instalera...");
+        ed.WriteMessage("\nTCM-INZINJERING: pokretanje preuzimanja (poseban prozor)...");
         if (!PluginUpdater.TryStartUpdate(result, out var message))
         {
             ed.WriteMessage($"\nTCM-INZINJERING: {message}");
