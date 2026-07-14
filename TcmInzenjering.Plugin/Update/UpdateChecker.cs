@@ -43,7 +43,7 @@ internal static class UpdateChecker
         {
             using var response = await HttpClient.GetAsync(PluginInfo.UpdateManifestUrl).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             var manifest = await JsonSerializer.DeserializeAsync<UpdateManifest>(stream, JsonOptions).ConfigureAwait(false);
             if (manifest is null || string.IsNullOrWhiteSpace(manifest.Version))
             {

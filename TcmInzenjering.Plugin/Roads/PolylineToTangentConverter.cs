@@ -107,7 +107,7 @@ internal static class PolylineToTangentConverter
 
             var inDir = inVec.GetNormal();
             var outDir = outVec.GetNormal();
-            var dot = Math.Clamp(inDir.DotProduct(outDir), -1.0, 1.0);
+            var dot = MathNet48.Clamp(inDir.DotProduct(outDir), -1.0, 1.0);
             var deflection = Math.Acos(dot);
             var cross = inDir.X * outDir.Y - inDir.Y * outDir.X;
             if (Math.Abs(deflection) < 0.001 || Math.Abs(Math.Abs(deflection) - Math.PI) < 0.001)

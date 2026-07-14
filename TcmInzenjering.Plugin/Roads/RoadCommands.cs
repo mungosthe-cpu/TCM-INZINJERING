@@ -3,9 +3,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
-#if NET8_0_OR_GREATER
 using TcmInzenjering.Plugin.Dialogs;
-#endif
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace TcmInzenjering.Plugin.Roads;

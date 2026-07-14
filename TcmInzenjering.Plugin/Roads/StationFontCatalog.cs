@@ -127,10 +127,10 @@ internal static class StationFontCatalog
             return match.FileName;
         }
 
-        if (trimmed.Contains('(') && trimmed.EndsWith(')'))
+        if (trimmed.Contains("(") && trimmed.EndsWith(")"))
         {
             var start = trimmed.LastIndexOf('(');
-            var inner = trimmed[(start + 1)..^1].Trim();
+            var inner = trimmed.Substring(start + 1, trimmed.Length - start - 2).Trim();
             if (!string.IsNullOrWhiteSpace(inner))
             {
                 return inner;

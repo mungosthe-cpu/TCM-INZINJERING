@@ -74,4 +74,39 @@ public sealed class Commands
         doc?.Editor.WriteMessage($"\nTCM-INZINJERING: Font stacionaze: {dialog.SelectedFontFile}. Osvezi stacionaze (TCMSTACAZUR).");
 #endif
     }
+
+    [CommandMethod("TCMUNINSTALL", CommandFlags.Modal)]
+    public void UninstallPlugin()
+    {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        var ed = doc?.Editor;
+
+#if NET48
+        if (ed is not null)
+        {
+            var opts = new PromptKeywordOptions("\nPotpuno obrisati TCM-INZINJERING iz AutoCAD-a? [Da/Ne] <Ne>: ")
+            {
+                AllowNone = true
+            };
+            opts.Keywords.Add("Da");
+            opts.Keywords.Add("Ne");
+            opts.Keywords.Default = "Ne";
+            var res = ed.GetKeywords(opts);
+            if (res.Status != PromptStatus.OK ||
+                !string.Equals(res.StringResult, "Da", StringComparison.OrdinalIgnoreCase))
+            {
+                ed.WriteMessage("\nTCM-INZINJERING: Deinstalacija otkazana.");
+                return;
+            }
+        }
+#endif
+
+        if (!PluginUninstaller.ConfirmAndStart(out var message))
+        {
+            ed?.WriteMessage($"\nTCM-INZINJERING: {message}");
+            return;
+        }
+
+        ed?.WriteMessage($"\nTCM-INZINJERING: {message}");
+    }
 }

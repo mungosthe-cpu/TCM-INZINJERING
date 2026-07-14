@@ -1,5 +1,5 @@
 ﻿{
-    "Version":  "1.1.5",
-    "ReleaseNotes":  "Stacionaze (OSA + chainage odvojeno), TCMPOPOSPOZ odmaci, boje u krivinama, prefiks oznake, auto-selekcija poprecnih osa.",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.5.exe"
+    "Version":  "1.1.6",
+    "ReleaseNotes":  "AutoCAD 2020-2024: net48 Legacy DLL u instalaciji. Ispravke stacionaze/TCMPOPOSPOZ, deinstalacija, ribbon.",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.6.exe"
 }

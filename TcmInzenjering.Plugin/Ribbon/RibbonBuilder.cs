@@ -69,7 +69,12 @@ internal static class RibbonBuilder
                 panel,
                 CreateButton("Nadogradnja", "Proverava da li postoji novija verzija plugina.", "TCMUPDATE ", "refresh"),
                 CreateButton("Verzija", "Prikaz trenutne verzije i linka za preuzimanje.", "TCMINFO ", "info"),
-                CreateButton("Osvezi Ribbon", "Ponovo kreira ribbon tab.", "TCMRIBBON ", "ribbon"));
+                CreateButton("Osvezi Ribbon", "Ponovo kreira ribbon tab.", "TCMRIBBON ", "ribbon"),
+                CreateButton(
+                    "Deinstaliraj",
+                    "Potpuno brise TCM-INZINJERING iz AutoCAD-a (bundle, registry, podesavanja).",
+                    "TCMUNINSTALL ",
+                    "uninstall"));
         });
 
         InsertTabNearFeaturedApps(ribbon, tab);
