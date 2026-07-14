@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
 using System.Windows;
 using Autodesk.Windows;
 #endif
@@ -16,7 +16,7 @@ internal static class PluginUninstaller
     public static bool ConfirmAndStart(out string message)
     {
         message = string.Empty;
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
         var answer = MessageBox.Show(
             "Ovo ce potpuno obrisati TCM-INZINJERING iz AutoCAD/BricsCAD " +
             "(bundle, registry, lokalna podesavanja)." + Environment.NewLine + Environment.NewLine +
@@ -32,7 +32,7 @@ internal static class PluginUninstaller
             return false;
         }
 #else
-        // Legacy: potvrda preko komandne linije (PromptKeyword u Commands).
+        // BricsCAD: potvrda preko komandne linije (PromptKeyword u Commands).
 #endif
 
         try
@@ -49,7 +49,7 @@ internal static class PluginUninstaller
             };
             Process.Start(start);
 
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
             TryRemoveRibbonTab();
 #endif
             message =
@@ -64,7 +64,7 @@ internal static class PluginUninstaller
         }
     }
 
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
     private static void TryRemoveRibbonTab()
     {
         try

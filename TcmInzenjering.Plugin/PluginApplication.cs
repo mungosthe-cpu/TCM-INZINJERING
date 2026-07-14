@@ -1,6 +1,7 @@
 using Autodesk.AutoCAD.Runtime;
+using TcmInzenjering.Plugin.Compat;
 using TcmInzenjering.Plugin.Update;
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
 using TcmInzenjering.Plugin.Ribbon;
 #endif
 
@@ -14,7 +15,7 @@ namespace TcmInzenjering.Plugin;
 
 public sealed class PluginApplication : IExtensionApplication
 {
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
     private static bool _ribbonInitialized;
 #endif
 
@@ -22,7 +23,9 @@ public sealed class PluginApplication : IExtensionApplication
     {
         try
         {
-#if NET8_0_OR_GREATER
+            PluginAssemblyResolver.Register();
+
+#if !BRICSCAD
             if (Autodesk.Windows.ComponentManager.Ribbon is not null)
             {
                 EnsureRibbon();
@@ -35,9 +38,17 @@ public sealed class PluginApplication : IExtensionApplication
 
             Autodesk.AutoCAD.ApplicationServices.Core.Application.SystemVariableChanged += OnSystemVariableChanged;
 #endif
-            Roads.AxisChangeMonitor.Initialize();
-            Roads.AxisSelectionCoordinator.Initialize();
-            Roads.StationFontPreferences.Load();
+            try
+            {
+                Roads.AxisChangeMonitor.Initialize();
+                Roads.AxisSelectionCoordinator.Initialize();
+                Roads.StationFontPreferences.Load();
+            }
+            catch (System.Exception ex)
+            {
+                WriteMessage($"TCM-INZINJERING: greska pri inicijalizaciji puteva - {ex.Message}");
+            }
+
             WriteMessage($"TCM-INZINJERING v{PluginInfo.Version}: plugin ucitan. Komande: TCMPLO2TAN, TCMUPDATE, TCMSTACAZUR");
             System.Threading.Tasks.Task.Run(UpdateCommands.CheckForUpdatesOnStartup);
         }
@@ -49,7 +60,7 @@ public sealed class PluginApplication : IExtensionApplication
 
     public void Terminate()
     {
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
         Autodesk.Windows.ComponentManager.ItemInitialized -= OnComponentManagerItemInitialized;
         Autodesk.AutoCAD.ApplicationServices.Core.Application.Idle -= OnIdleOnce;
         Autodesk.AutoCAD.ApplicationServices.Core.Application.SystemVariableChanged -= OnSystemVariableChanged;
@@ -58,7 +69,7 @@ public sealed class PluginApplication : IExtensionApplication
         Roads.AxisSelectionCoordinator.Terminate();
     }
 
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
     private static void OnComponentManagerItemInitialized(object? sender, Autodesk.Windows.RibbonItemEventArgs e)
     {
         if (Autodesk.Windows.ComponentManager.Ribbon is null)
@@ -114,7 +125,7 @@ public sealed class PluginApplication : IExtensionApplication
 #else
     internal static void EnsureRibbon()
     {
-        WriteMessage("TCM-INZINJERING: Ribbon nije dostupan u legacy/BricsCAD verziji. Koristite komande iz komandne linije.");
+        WriteMessage("TCM-INZINJERING: Ribbon nije dostupan u BricsCAD verziji. Koristite komande iz komandne linije.");
     }
 #endif
 

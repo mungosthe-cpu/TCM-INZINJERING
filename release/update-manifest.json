@@ -1,5 +1,5 @@
 ﻿{
-    "Version":  "1.1.7",
-    "ReleaseNotes":  "Ispravka nadogradnje: TCMUPDATE preuzima installer i automatski ga pokrece nakon zatvaranja AutoCAD-a.",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.7.exe"
+    "Version":  "1.1.8",
+    "ReleaseNotes":  "AutoCAD 2024: System.Text.Json deps u net48 bundle + ribbon. Ispravka ucitavanja StationFontPreferences.",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.8.exe"
 }

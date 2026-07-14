@@ -144,7 +144,7 @@ internal static class RibbonBuilder
         for (var i = 0; i < ribbon.Tabs.Count; i++)
         {
             var title = ribbon.Tabs[i].Title ?? string.Empty;
-            if (title.Contains(FeaturedAppsTitle, StringComparison.OrdinalIgnoreCase))
+            if (title.IndexOf(FeaturedAppsTitle, StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return i;
             }

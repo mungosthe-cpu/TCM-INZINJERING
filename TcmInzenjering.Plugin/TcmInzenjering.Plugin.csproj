@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>TcmInzenjering.Plugin</RootNamespace>
-    <UseWPF Condition="'$(TargetFramework)' != 'net48'">true</UseWPF>
+    <UseWPF Condition="'$(UseBricsCAD)' != 'true'">true</UseWPF>
     <PlatformTarget>x64</PlatformTarget>
     <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
@@ -68,6 +68,10 @@
       <HintPath>$(AutoCADPath)\acmgd.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="AdWindows">
+      <HintPath>$(AutoCADPath)\AdWindows.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
@@ -99,6 +103,9 @@
     <Compile Remove="Dialogs\AciColorHelper.cs" />
     <Compile Remove="Dialogs\Plo2TanDialogPreferences.cs" />
     <Compile Remove="Dialogs\Plo2TanDialogState.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48' and '$(UseBricsCAD)' == 'true'">
     <Compile Remove="Ribbon\RibbonBuilder.cs" />
     <Compile Remove="Ribbon\RibbonIconLoader.cs" />
   </ItemGroup>
@@ -115,14 +122,20 @@
   </ItemGroup>
 
   <Target Name="CopyToBundle" AfterTargets="Build">
+    <ItemGroup>
+      <_BundleRuntimeDlls Include="$(TargetPath)" />
+      <!-- net48: NuGet deps (System.Text.Json, etc.) must ship beside the plugin DLL -->
+      <_BundleRuntimeDlls Include="$(TargetDir)*.dll" Condition="'$(TargetFramework)' == 'net48'" />
+    </ItemGroup>
+
     <MakeDir Directories="$(BundleContents)\$(BundleDllSubdir)" />
     <MakeDir Directories="$(BundleContents)\$(BundleDllSubdir)\Icons" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_BundleRuntimeDlls)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(RibbonIcons)" DestinationFolder="$(BundleContents)\$(BundleDllSubdir)\Icons" SkipUnchangedFiles="true" />
 
     <MakeDir Directories="$(BricsBundleContents)\$(BundleDllSubdir)" />
     <MakeDir Directories="$(BricsBundleContents)\$(BundleDllSubdir)\Icons" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BricsBundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_BundleRuntimeDlls)" DestinationFolder="$(BricsBundleContents)\$(BundleDllSubdir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(RibbonIcons)" DestinationFolder="$(BricsBundleContents)\$(BundleDllSubdir)\Icons" SkipUnchangedFiles="true" />
   </Target>
 

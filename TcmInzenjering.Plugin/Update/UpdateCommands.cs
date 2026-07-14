@@ -27,7 +27,7 @@ public sealed class UpdateCommands
             return;
         }
 
-#if NET48
+#if BRICSCAD
         var opts = new PromptKeywordOptions(
             $"\nPreuzeti i instalirati v{result.LatestVersion}? [Da/Ne] <Da>: ")
         {

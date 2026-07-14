@@ -7,11 +7,14 @@ internal static class StationFontPreferences
 {
     private const string DefaultFontFile = "txt.shx";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    private static JsonSerializerOptions? _jsonOptions;
+
+    private static JsonSerializerOptions JsonOptions =>
+        _jsonOptions ??= new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
 
     private static string PreferencesPath =>
         Path.Combine(

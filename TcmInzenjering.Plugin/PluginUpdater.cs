@@ -4,6 +4,8 @@ using System.Net.Http;
 using System.Text;
 #if NET8_0_OR_GREATER
 using System.Windows;
+#elif !BRICSCAD
+using System.Windows;
 #endif
 using TcmInzenjering.Plugin.Update;
 
@@ -43,7 +45,7 @@ internal static class PluginUpdater
             return false;
         }
 
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
         var answer = MessageBox.Show(
             $"Dostupna je nova verzija {result.LatestVersion} (trenutna {result.CurrentVersion})." +
             Environment.NewLine + Environment.NewLine +
@@ -61,7 +63,7 @@ internal static class PluginUpdater
             return false;
         }
 #else
-        // Legacy: potvrda preko komandne linije u UpdateCommands.
+        // BricsCAD / legacy CLI: potvrda preko UpdateCommands.
 #endif
 
         try

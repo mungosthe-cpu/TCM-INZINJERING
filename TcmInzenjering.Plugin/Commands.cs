@@ -45,13 +45,13 @@ public sealed class Commands
     [CommandMethod("TCMRIBBON", CommandFlags.Modal)]
     public void RefreshRibbon()
     {
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
         PluginApplication.EnsureRibbon();
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon tab je osvezen.");
 #else
         var doc = AcApp.DocumentManager.MdiActiveDocument;
-        doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon nije dostupan. Koristite komande TCMPLO2TAN, TCMSTACOZN, TCMUPDATE.");
+        doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon nije dostupan u BricsCAD verziji. Koristite komande TCMPLO2TAN, TCMSTACOZN, TCMUPDATE.");
 #endif
     }
 
@@ -81,7 +81,7 @@ public sealed class Commands
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         var ed = doc?.Editor;
 
-#if NET48
+#if BRICSCAD
         if (ed is not null)
         {
             var opts = new PromptKeywordOptions("\nPotpuno obrisati TCM-INZINJERING iz AutoCAD-a? [Da/Ne] <Ne>: ")
