@@ -1,5 +1,5 @@
 ﻿{
-    "Version":  "1.1.6",
-    "ReleaseNotes":  "AutoCAD 2020-2024: net48 Legacy DLL u instalaciji. Ispravke stacionaze/TCMPOPOSPOZ, deinstalacija, ribbon.",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.6.exe"
+    "Version":  "1.1.7",
+    "ReleaseNotes":  "Ispravka nadogradnje: TCMUPDATE preuzima installer i automatski ga pokrece nakon zatvaranja AutoCAD-a.",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.7.exe"
 }

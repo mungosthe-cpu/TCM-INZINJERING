@@ -66,7 +66,7 @@ internal static class UpdateChecker
                 DownloadUrl = string.IsNullOrWhiteSpace(manifest.DownloadUrl)
                     ? PluginInfo.ReleasesPageUrl
                     : manifest.DownloadUrl,
-                ReleaseNotes = manifest.Notes
+                ReleaseNotes = manifest.ReleaseNotes ?? manifest.Notes
             });
         }
         catch (Exception ex)
@@ -103,6 +103,7 @@ internal static class UpdateChecker
     {
         public string Version { get; set; } = string.Empty;
         public string? DownloadUrl { get; set; }
+        public string? ReleaseNotes { get; set; }
         public string? Notes { get; set; }
         public string? ReleaseDate { get; set; }
     }

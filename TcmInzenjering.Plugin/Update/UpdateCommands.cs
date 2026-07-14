@@ -1,3 +1,4 @@
+using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using TcmInzenjering.Plugin.Update;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
@@ -20,6 +21,38 @@ public sealed class UpdateCommands
 
         var result = UpdateChecker.CheckForUpdates(forceRefresh: true);
         WriteResult(ed, result);
+
+        if (!result.CheckSucceeded || !result.UpdateAvailable)
+        {
+            return;
+        }
+
+#if NET48
+        var opts = new PromptKeywordOptions(
+            $"\nPreuzeti i instalirati v{result.LatestVersion}? [Da/Ne] <Da>: ")
+        {
+            AllowNone = true
+        };
+        opts.Keywords.Add("Da");
+        opts.Keywords.Add("Ne");
+        opts.Keywords.Default = "Da";
+        var res = ed.GetKeywords(opts);
+        if (res.Status != PromptStatus.OK ||
+            string.Equals(res.StringResult, "Ne", StringComparison.OrdinalIgnoreCase))
+        {
+            ed.WriteMessage("\nTCM-INZINJERING: Nadogradnja otkazana.");
+            return;
+        }
+#endif
+
+        ed.WriteMessage("\nTCM-INZINJERING: preuzimanje instalera...");
+        if (!PluginUpdater.TryStartUpdate(result, out var message))
+        {
+            ed.WriteMessage($"\nTCM-INZINJERING: {message}");
+            return;
+        }
+
+        ed.WriteMessage($"\nTCM-INZINJERING: {message}");
     }
 
     internal static void CheckForUpdatesOnStartup()
@@ -34,7 +67,7 @@ public sealed class UpdateCommands
 
             var doc = AcApp.DocumentManager.MdiActiveDocument;
             doc?.Editor.WriteMessage(
-                $"\nTCM-INZINJERING: dostupna je nova verzija {result.LatestVersion} (trenutna {result.CurrentVersion}). Pokreni TCMUPDATE za detalje.");
+                $"\nTCM-INZINJERING: dostupna je nova verzija {result.LatestVersion} (trenutna {result.CurrentVersion}). Pokreni TCMUPDATE za instalaciju.");
         }
         catch
         {
@@ -42,7 +75,7 @@ public sealed class UpdateCommands
         }
     }
 
-    private static void WriteResult(Autodesk.AutoCAD.EditorInput.Editor ed, UpdateCheckResult result)
+    private static void WriteResult(Editor ed, UpdateCheckResult result)
     {
         ed.WriteMessage($"\nTCM-INZINJERING: trenutna verzija {result.CurrentVersion}.");
 
@@ -66,6 +99,5 @@ public sealed class UpdateCommands
         }
 
         ed.WriteMessage($"\n  Preuzimanje: {result.DownloadUrl}");
-        ed.WriteMessage("\n  Zatvorite AutoCAD/BricsCAD pre instalacije nove verzije.");
     }
 }
