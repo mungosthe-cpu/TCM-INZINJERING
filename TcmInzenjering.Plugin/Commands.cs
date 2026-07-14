@@ -21,7 +21,7 @@ public sealed class Commands
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         var ed = doc.Editor;
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
         try
         {
             var dialog = new Dialogs.AboutDialog();
@@ -58,9 +58,9 @@ public sealed class Commands
     [CommandMethod("TCMSTACFONT", CommandFlags.Modal)]
     public void ConfigureStationFont()
     {
-#if NET48
+#if BRICSCAD
         AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-            "\nTCM-INZINJERING: Podesavanje fonta stacionaze je dostupno u AutoCAD 2025+ verziji plugina.");
+            "\nTCM-INZINJERING: Podesavanje fonta stacionaze nije dostupno u BricsCAD verziji plugina.");
         return;
 #else
         var dialog = new Dialogs.StationFontDialog();

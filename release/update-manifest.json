@@ -1,5 +1,5 @@
 ﻿{
-    "Version":  "1.1.9",
-    "ReleaseNotes":  "Nadogradnja: preuzimanje u posebnom prozoru sa progress bar-om (AutoCAD se ne blokira). Posle instalacije obavestenje o verziji i sta je novo.",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.9.exe"
+    "Version":  "1.1.10",
+    "ReleaseNotes":  "AutoCAD 2024: TCMSTACFONT i About dijalog rade i na Legacy (2020-2024). Font stacionaze vise nije ogranicen na 2025+.",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.10.exe"
 }

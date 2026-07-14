@@ -5,7 +5,7 @@
   ProductType="Application"
   Name="TCM-INZINJERING"
   Description="TCM-INZINJERING - putevi, osovina i stacionaza."
-  AppVersion="1.1.9">
+  AppVersion="1.1.10">
   <CompanyDetails
     Name="TCM-INZINJERING"
     Url="https://github.com/mungosthe-cpu/TCM-INZINJERING"

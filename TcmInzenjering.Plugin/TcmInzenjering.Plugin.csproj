@@ -98,14 +98,21 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
-    <Page Remove="Dialogs\**\*.xaml" />
-    <Compile Remove="Dialogs\**\*.xaml.cs" />
+    <!-- Legacy: keep StationFont + About WPF dialogs for AutoCAD 2020-2024; drop heavy Plo2Tan/CrossAxis UI. -->
+    <Page Remove="Dialogs\Plo2TanDialog.xaml" />
+    <Page Remove="Dialogs\ChainageFormatDialog.xaml" />
+    <Page Remove="Dialogs\CrossAxisSettingsDialog.xaml" />
+    <Compile Remove="Dialogs\Plo2TanDialog.xaml.cs" />
+    <Compile Remove="Dialogs\ChainageFormatDialog.xaml.cs" />
+    <Compile Remove="Dialogs\CrossAxisSettingsDialog.xaml.cs" />
     <Compile Remove="Dialogs\AciColorHelper.cs" />
     <Compile Remove="Dialogs\Plo2TanDialogPreferences.cs" />
     <Compile Remove="Dialogs\Plo2TanDialogState.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net48' and '$(UseBricsCAD)' == 'true'">
+    <Page Remove="Dialogs\**\*.xaml" />
+    <Compile Remove="Dialogs\**\*.xaml.cs" />
     <Compile Remove="Ribbon\RibbonBuilder.cs" />
     <Compile Remove="Ribbon\RibbonIconLoader.cs" />
   </ItemGroup>
