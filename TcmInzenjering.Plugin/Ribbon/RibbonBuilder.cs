@@ -33,20 +33,43 @@ internal static class RibbonBuilder
             Title = TabTitle
         };
 
+        AddPanel(tab, "Podesavanja", panel =>
+        {
+            AddButtonsToRow(panel, CreateButton(
+                "Font stacionaze",
+                "Definise font ispisa oznaka stacionaze.",
+                "TCMSTACFONT ",
+                "toolspace"));
+        });
+
         AddPanel(tab, "Putovi", panel =>
         {
-            panel.Items.Add(CreateButton("PLO u tangentni poligon", "Pretvara polylinu u osovinu (pravac+luk) i stacionaze.", "TCMPLO2TAN ", "plo2tan"));
-            panel.Items.Add(CreateButton("Stacionaze", "Iscrtava oznake stacionaze duz polyline osovine.", "TCMSTACOZN ", "staco"));
-            panel.Items.Add(CreateButton("Azuriraj stac.", "Azurira stacionaze posle pomeranja osovine.", "TCMSTACAZUR ", "refresh"));
-            panel.Items.Add(CreateButton("Info osovine", "Prikaz tabele elemenata osovine u komandnoj liniji.", "TCMOSINFO ", "info"));
-            panel.Items.Add(CreateButton("Test plugin", "Provera da li je plugin ucitan.", "TCMHELLO ", "hello"));
+            AddButtonsToRow(
+                panel,
+                CreateButton("PLO u tangentni poligon", "Pretvara polylinu u osovinu (pravac+luk) i stacionaze.", "TCMPLO2TAN ", "plo2tan"),
+                CreateButton("Stacionaze", "Iscrtava oznake stacionaze duz polyline osovine.", "TCMSTACOZN ", "staco"),
+                CreateButton("Azuriraj stac.", "Azurira stacionaze posle pomeranja osovine.", "TCMSTACAZUR ", "refresh"),
+                CreateButton("Info osovine", "Prikaz tabele elemenata osovine u komandnoj liniji.", "TCMOSINFO ", "info"),
+                CreateButton("Tabela osovine", "Ubacuje tabelu elemenata osovine u crtez.", "TCMOSTAB ", "info"),
+                CreateButton("Test plugin", "Provera da li je plugin ucitan.", "TCMHELLO ", "hello"));
+        });
+
+        AddPanel(tab, "Uredjenje osa", panel =>
+        {
+            AddButtonsToRow(panel, CreateButton(
+                "Pozicija pop. osa",
+                "Podesava polozaj oznaka i stacionaza poprecnih osa.",
+                "TCMPOPOSPOZ ",
+                "staco"));
         });
 
         AddPanel(tab, "Alati", panel =>
         {
-            panel.Items.Add(CreateButton("Nadogradnja", "Proverava da li postoji novija verzija plugina.", "TCMUPDATE ", "refresh"));
-            panel.Items.Add(CreateButton("Verzija", "Prikaz trenutne verzije i linka za preuzimanje.", "TCMINFO ", "info"));
-            panel.Items.Add(CreateButton("Osvezi Ribbon", "Ponovo kreira ribbon tab.", "TCMRIBBON ", "ribbon"));
+            AddButtonsToRow(
+                panel,
+                CreateButton("Nadogradnja", "Proverava da li postoji novija verzija plugina.", "TCMUPDATE ", "refresh"),
+                CreateButton("Verzija", "Prikaz trenutne verzije i linka za preuzimanje.", "TCMINFO ", "info"),
+                CreateButton("Osvezi Ribbon", "Ponovo kreira ribbon tab.", "TCMRIBBON ", "ribbon"));
         });
 
         InsertTabNearFeaturedApps(ribbon, tab);
@@ -61,12 +84,18 @@ internal static class RibbonBuilder
 
         configure(panelSource);
 
-        var panel = new RibbonPanel
-        {
-            Source = panelSource
-        };
+        tab.Panels.Add(new RibbonPanel { Source = panelSource });
+    }
 
-        tab.Panels.Add(panel);
+    private static void AddButtonsToRow(RibbonPanelSource panel, params RibbonButton[] buttons)
+    {
+        var row = new RibbonRowPanel();
+        foreach (var button in buttons)
+        {
+            row.Items.Add(button);
+        }
+
+        panel.Items.Add(row);
     }
 
     private static RibbonButton CreateButton(string text, string description, string command, string iconName)

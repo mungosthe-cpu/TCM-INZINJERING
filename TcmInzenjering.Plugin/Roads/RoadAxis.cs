@@ -55,34 +55,110 @@ internal sealed class RoadAxis
 
     public Vector3d? GetDirectionAtStation(double station)
     {
-        foreach (var element in Elements)
+        const double tolerance = 1e-3;
+        AlignmentElement? match = null;
+
+        for (var i = 0; i < Elements.Count; i++)
         {
-            if (station < element.StartStation - 1e-6 || station > element.EndStation + 1e-6)
+            var element = Elements[i];
+            if (station < element.StartStation - tolerance || station > element.EndStation + tolerance)
             {
                 continue;
             }
 
-            if (element.Type == AlignmentElementType.Tangent)
+            match = element;
+
+            var atEnd = Math.Abs(station - element.EndStation) <= tolerance;
+            var hasNext = i < Elements.Count - 1;
+            if (atEnd && hasNext &&
+                Math.Abs(station - Elements[i + 1].StartStation) <= tolerance &&
+                station > element.StartStation + tolerance)
             {
-                var direction = element.End - element.Start;
-                return direction.Length < 1e-9 ? null : direction.GetNormal();
+                continue;
             }
 
-            var point = GetPointAtStation(station);
-            if (point is null)
-            {
-                return null;
-            }
-
-            var radial = point.Value - element.Center;
-            var tangent = element.Clockwise
-                ? new Vector3d(radial.Y, -radial.X, 0)
-                : new Vector3d(-radial.Y, radial.X, 0);
-
-            return tangent.GetNormal();
+            break;
         }
 
-        return null;
+        if (match is null)
+        {
+            return null;
+        }
+
+        if (match.Type == AlignmentElementType.Tangent)
+        {
+            var direction = match.End - match.Start;
+            return direction.Length < 1e-9 ? null : direction.GetNormal();
+        }
+
+        var point = GetPointAtStation(station);
+        if (point is null)
+        {
+            return null;
+        }
+
+        var radial = point.Value - match.Center;
+        var tangent = match.Clockwise
+            ? new Vector3d(radial.Y, -radial.X, 0)
+            : new Vector3d(-radial.Y, radial.X, 0);
+
+        return tangent.GetNormal();
+    }
+
+    public AlignmentElement? GetElementAtStation(double station)
+    {
+        const double tolerance = 1e-3;
+        AlignmentElement? match = null;
+
+        for (var i = 0; i < Elements.Count; i++)
+        {
+            var element = Elements[i];
+            if (station < element.StartStation - tolerance || station > element.EndStation + tolerance)
+            {
+                continue;
+            }
+
+            match = element;
+
+            var atEnd = Math.Abs(station - element.EndStation) <= tolerance;
+            var hasNext = i < Elements.Count - 1;
+            if (atEnd && hasNext &&
+                Math.Abs(station - Elements[i + 1].StartStation) <= tolerance &&
+                station > element.StartStation + tolerance)
+            {
+                match = Elements[i + 1];
+            }
+
+            break;
+        }
+
+        return match;
+    }
+
+    public Vector3d? SampleDirectionAtStation(double station, double delta = 0.5)
+    {
+        if (Elements.Count == 0)
+        {
+            return null;
+        }
+
+        var axisEnd = Elements[^1].EndStation;
+        var start = Math.Max(StartStation, station - delta);
+        var end = Math.Min(axisEnd, station + delta);
+        if (end - start < 1e-6)
+        {
+            return GetDirectionAtStation(station);
+        }
+
+        var startPoint = GetPointAtStation(start);
+        var endPoint = GetPointAtStation(end);
+        if (startPoint is null || endPoint is null)
+        {
+            return GetDirectionAtStation(station);
+        }
+
+        var direction = endPoint.Value - startPoint.Value;
+        return direction.Length < 1e-9 ? GetDirectionAtStation(station) : direction.GetNormal();
     }
 
     private static double InterpolateAngle(double start, double end, bool clockwise, double ratio)

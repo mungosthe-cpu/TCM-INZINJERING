@@ -24,7 +24,19 @@ internal static class RoadAxisStore
             new TypedValue((int)DxfCode.Real, metadata.AlignToStart ? 1.0 : 0.0),
             new TypedValue((int)DxfCode.Real, metadata.LabelAtStart ? 1.0 : 0.0),
             new TypedValue((int)DxfCode.Real, metadata.LabelAtEnd ? 1.0 : 0.0),
-            new TypedValue((int)DxfCode.Real, metadata.LabelAtMainPoints ? 1.0 : 0.0));
+            new TypedValue((int)DxfCode.Real, metadata.LabelAtMainPoints ? 1.0 : 0.0),
+            new TypedValue((int)DxfCode.Int64, metadata.SourcePolylineHandle),
+            new TypedValue((int)DxfCode.Real, metadata.PolylineStartDistance),
+            new TypedValue((int)DxfCode.Real, metadata.PolylineEndDistance),
+            new TypedValue((int)DxfCode.Real, metadata.AxisCounterStart),
+            new TypedValue((int)DxfCode.Real, (int)metadata.LabelFormat),
+            new TypedValue((int)DxfCode.Real, metadata.DrawSegmentLabels ? 1.0 : 0.0),
+            new TypedValue((int)DxfCode.Real, metadata.AxisColorIndex),
+            new TypedValue((int)DxfCode.Real, metadata.StationTextColorIndex),
+            new TypedValue((int)DxfCode.Real, metadata.StationTickColorIndex),
+            new TypedValue((int)DxfCode.Real, metadata.SegmentLabelColorIndex),
+            new TypedValue((int)DxfCode.Real, metadata.PolylineReferenceLength),
+            new TypedValue((int)DxfCode.Real, metadata.ChainageFormat));
 
         if (dictionary.Contains(key))
         {
@@ -78,7 +90,23 @@ internal static class RoadAxisStore
             AlignToStart = items.Length < 11 || Convert.ToDouble(items[10].Value) > 0.5,
             LabelAtStart = items.Length >= 12 && Convert.ToDouble(items[11].Value) > 0.5,
             LabelAtEnd = items.Length < 13 || Convert.ToDouble(items[12].Value) > 0.5,
-            LabelAtMainPoints = items.Length >= 14 && Convert.ToDouble(items[13].Value) > 0.5
+            LabelAtMainPoints = items.Length >= 14 && Convert.ToDouble(items[13].Value) > 0.5,
+            SourcePolylineHandle = items.Length >= 15 ? Convert.ToInt64(items[14].Value) : 0,
+            PolylineStartDistance = items.Length >= 16 ? Convert.ToDouble(items[15].Value) : startStation,
+            PolylineEndDistance = items.Length >= 17 ? Convert.ToDouble(items[16].Value) : (items.Length >= 8 ? Convert.ToDouble(items[7].Value) : startStation),
+            AxisCounterStart = items.Length >= 18 ? (int)Math.Round(Convert.ToDouble(items[17].Value)) : 1,
+            LabelFormat = items.Length >= 19
+                ? (StationLabelFormat)(int)Math.Round(Convert.ToDouble(items[18].Value))
+                : StationLabelFormat.ProjectCounter,
+            DrawSegmentLabels = items.Length >= 20 && Convert.ToDouble(items[19].Value) > 0.5,
+            AxisColorIndex = items.Length >= 21 ? (short)Math.Round(Convert.ToDouble(items[20].Value)) : DrawingColorDefaults.Axis,
+            StationTextColorIndex = items.Length >= 22 ? (short)Math.Round(Convert.ToDouble(items[21].Value)) : DrawingColorDefaults.StationText,
+            StationTickColorIndex = items.Length >= 23 ? (short)Math.Round(Convert.ToDouble(items[22].Value)) : DrawingColorDefaults.StationTick,
+            SegmentLabelColorIndex = items.Length >= 24 ? (short)Math.Round(Convert.ToDouble(items[23].Value)) : DrawingColorDefaults.SegmentLabel,
+            PolylineReferenceLength = items.Length >= 25 ? Convert.ToDouble(items[24].Value) : 0,
+            ChainageFormat = items.Length >= 26
+                ? (int)Math.Round(Convert.ToDouble(items[25].Value))
+                : ChainageFormatter.DefaultFormat
         };
     }
 

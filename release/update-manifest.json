@@ -1,6 +1,5 @@
 ﻿{
-    "Version":  "1.1.4",
-    "ReleaseDate":  "2026-07-13",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.4.exe",
-    "Notes":  "Ispravka stacionaza (STA 0+020.00), Info o programu prozor, BricsCAD registry i bundle DLL."
+    "Version":  "1.1.5",
+    "ReleaseNotes":  "Stacionaze (OSA + chainage odvojeno), TCMPOPOSPOZ odmaci, boje u krivinama, prefiks oznake, auto-selekcija poprecnih osa.",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.5.exe"
 }

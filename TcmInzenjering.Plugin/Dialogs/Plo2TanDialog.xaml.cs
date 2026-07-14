@@ -8,37 +8,62 @@ namespace TcmInzenjering.Plugin.Dialogs;
 public partial class Plo2TanDialog : Window
 {
     private readonly double _axisLength;
+    private readonly Plo2TanDialogState _state;
     private bool _updating;
     private bool _isUiReady;
 
-    public string AxisName { get; private set; } = "OS-1";
-    public double CurveRadius { get; private set; } = 50;
-    public double StartStation { get; private set; }
-    public double EndStation { get; private set; }
-    public double Interval { get; private set; } = 20;
-    public double TextHeight { get; private set; } = 2.5;
-    public double TickLength { get; private set; } = 2.0;
-    public string Prefix { get; private set; } = "STA ";
-    public StationLabelOptions StationOptions { get; private set; } = new();
+    public Plo2TanDialogCloseAction CloseAction { get; private set; } = Plo2TanDialogCloseAction.Cancelled;
 
-    public Plo2TanDialog(double axisLength, double suggestedStartStation = 0)
+    public string AxisName => _state.AxisName;
+    public double CurveRadius => _state.CurveRadius;
+    public double StartStation => _state.StartStation;
+    public double EndStation => _state.EndStation;
+    public double Interval => _state.Interval;
+    public double TextHeight => _state.TextHeight;
+    public double TickLength => _state.TickLength;
+    public string Prefix => _state.Prefix;
+    public int AxisCounterStart => _state.AxisCounterStart;
+    public StationLabelOptions StationOptions => _state.ToStationOptions();
+
+    public Plo2TanDialog(double axisLength, Plo2TanDialogState state)
     {
+        _axisLength = Math.Max(axisLength, 0);
+        _state = state;
         InitializeComponent();
         _isUiReady = true;
-        _axisLength = Math.Max(axisLength, 0);
-
-        AxisNameBox.Text = "OS-1";
-        RadiusBox.Text = "50";
-        StartStationBox.Text = suggestedStartStation.ToString("0.####", CultureInfo.InvariantCulture);
-        EndStationBox.Text = (suggestedStartStation + _axisLength).ToString("0.####", CultureInfo.InvariantCulture);
-        IntervalBox.Text = "20";
-        PrefixBox.Text = "STA ";
-        TextHeightBox.Text = "2.5";
-        TickLengthBox.Text = "2.0";
-        LengthInfo.Text = $"Dužina osovine (približno): {_axisLength:F2} m. Krajnja stacionaža = početna + dužina.";
-
+        LoadFromState();
         UpdateWholeIntervalCaption();
         UpdateNestedEnabledState();
+    }
+
+    private void LoadFromState()
+    {
+        AxisNameBox.Text = _state.AxisName;
+        RadiusBox.Text = _state.CurveRadius.ToString("0.####", CultureInfo.InvariantCulture);
+        StartStationBox.Text = _state.StartStation.ToString("0.####", CultureInfo.InvariantCulture);
+        EndStationBox.Text = _state.EndStation.ToString("0.####", CultureInfo.InvariantCulture);
+        IntervalBox.Text = _state.Interval.ToString("0.####", CultureInfo.InvariantCulture);
+        PrefixBox.Text = _state.Prefix;
+        TextHeightBox.Text = _state.TextHeight.ToString("0.####", CultureInfo.InvariantCulture);
+        TickLengthBox.Text = _state.TickLength.ToString("0.####", CultureInfo.InvariantCulture);
+        AxisCounterStartBox.Text = _state.AxisCounterStart.ToString(CultureInfo.InvariantCulture);
+        EqualIntervalCheck.IsChecked = _state.EqualIntervalInBounds;
+        WholeIntervalCheck.IsChecked = _state.WholeInterval;
+        AlignStartRadio.IsChecked = _state.AlignToStart;
+        AlignEndRadio.IsChecked = !_state.AlignToStart;
+        AtStartCheck.IsChecked = _state.LabelAtStart;
+        AtEndCheck.IsChecked = _state.LabelAtEnd;
+        AtMainPointsCheck.IsChecked = _state.LabelAtMainPoints;
+        StationFormatBox.SelectedIndex = _state.LabelFormat == StationLabelFormat.ChainageOnly ? 1 : 0;
+        ChainageFormatBox.Text = _state.ChainageFormat.ToString(CultureInfo.InvariantCulture);
+        UpdateChainageFormatPreview();
+        SegmentLabelsCheck.IsChecked = _state.DrawSegmentLabels;
+        AciColorHelper.ApplyToButton(AxisColorButton, _state.AxisColorIndex);
+        AciColorHelper.ApplyToButton(StationTextColorButton, _state.StationTextColorIndex);
+        AciColorHelper.ApplyToButton(StationTickColorButton, _state.StationTickColorIndex);
+        AciColorHelper.ApplyToButton(SegmentLabelColorButton, _state.SegmentLabelColorIndex);
+        LengthInfo.Text =
+            $"Dužina osovine (približno): {_axisLength:F2} m. Početna/krajnja stacionaža = rastojanje duž polilinije (0 – {_axisLength:F2}). Oznake: prefiks + brojač ({_state.AxisCounterStart}, {_state.AxisCounterStart + 1}, ...) + stacionaža ({ChainageFormatter.GetSampleLabel(_state.ChainageFormat).TrimStart('-')}).";
     }
 
     private void OnEqualIntervalChanged(object sender, RoutedEventArgs e) => UpdateNestedEnabledState();
@@ -59,6 +84,8 @@ public partial class Plo2TanDialog : Window
         var wholeEnabled = equalEnabled && WholeIntervalCheck.IsChecked == true;
         StartStationBox.IsEnabled = wholeEnabled;
         EndStationBox.IsEnabled = wholeEnabled;
+        PickStartStationButton.IsEnabled = wholeEnabled;
+        PickEndStationButton.IsEnabled = wholeEnabled;
         AlignPanel.IsEnabled = wholeEnabled;
     }
 
@@ -75,12 +102,23 @@ public partial class Plo2TanDialog : Window
             if (ReferenceEquals(sender, StartStationBox) &&
                 TryParse(StartStationBox.Text, out var start))
             {
-                EndStationBox.Text = (start + _axisLength).ToString("0.####", CultureInfo.InvariantCulture);
+                start = Clamp(start, 0, _axisLength);
+                StartStationBox.Text = start.ToString("0.####", CultureInfo.InvariantCulture);
+                if (TryParse(EndStationBox.Text, out var end) && end < start)
+                {
+                    EndStationBox.Text = _axisLength.ToString("0.####", CultureInfo.InvariantCulture);
+                }
             }
             else if (ReferenceEquals(sender, EndStationBox) &&
-                     TryParse(EndStationBox.Text, out var end))
+                     TryParse(EndStationBox.Text, out var endValue))
             {
-                StartStationBox.Text = (end - _axisLength).ToString("0.####", CultureInfo.InvariantCulture);
+                endValue = Clamp(endValue, 0, _axisLength);
+                if (TryParse(StartStationBox.Text, out var startValue) && endValue < startValue)
+                {
+                    endValue = startValue;
+                }
+
+                EndStationBox.Text = endValue.ToString("0.####", CultureInfo.InvariantCulture);
             }
 
             UpdateWholeIntervalCaption();
@@ -111,78 +149,279 @@ public partial class Plo2TanDialog : Window
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
+        if (!TryReadInputs(out var message))
+        {
+            MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        CloseAction = Plo2TanDialogCloseAction.Confirmed;
+        Plo2TanDialogPreferences.SaveFrom(_state);
+        DialogResult = true;
+    }
+
+    private void OnPickStartStation(object sender, RoutedEventArgs e)
+    {
+        SaveInputsBestEffort();
+        CloseAction = Plo2TanDialogCloseAction.PickStartStation;
+        DialogResult = false;
+    }
+
+    private void OnPickEndStation(object sender, RoutedEventArgs e)
+    {
+        SaveInputsBestEffort();
+        CloseAction = Plo2TanDialogCloseAction.PickEndStation;
+        DialogResult = false;
+    }
+
+    private bool TryReadInputs(out string errorMessage)
+    {
+        errorMessage = string.Empty;
+
         if (string.IsNullOrWhiteSpace(AxisNameBox.Text))
         {
-            MessageBox.Show(this, "Unesite ime osovine.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            errorMessage = "Unesite ime osovine.";
+            return false;
         }
 
         if (!TryParse(RadiusBox.Text, out var radius) || radius <= 0)
         {
-            MessageBox.Show(this, "Radijus mora biti broj veći od 0.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            errorMessage = "Radijus mora biti broj veći od 0.";
+            return false;
         }
 
         if (!TryParse(StartStationBox.Text, out var start))
         {
-            MessageBox.Show(this, "Početna stacionaža nije validan broj.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            errorMessage = "Početna stacionaža nije validan broj.";
+            return false;
         }
 
         if (!TryParse(EndStationBox.Text, out var end))
         {
-            MessageBox.Show(this, "Krajnja stacionaža nije validan broj.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            errorMessage = "Krajnja stacionaža nije validan broj.";
+            return false;
+        }
+
+        start = Clamp(start, 0, _axisLength);
+        end = Clamp(end, 0, _axisLength);
+        if (end < start)
+        {
+            errorMessage = "Krajnja stacionaža mora biti veća ili jednaka početnoj.";
+            return false;
         }
 
         if (!TryParse(IntervalBox.Text, out var interval) || interval <= 0)
         {
-            MessageBox.Show(this, "Razdaljina između stacionaža mora biti broj veći od 0.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            errorMessage = "Razdaljina između stacionaža mora biti broj veći od 0.";
+            return false;
         }
 
         if (!TryParse(TextHeightBox.Text, out var textHeight) || textHeight <= 0)
         {
-            MessageBox.Show(this, "Visina teksta mora biti broj veći od 0.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            errorMessage = "Visina teksta mora biti broj veći od 0.";
+            return false;
         }
 
         if (!TryParse(TickLengthBox.Text, out var tickLength) || tickLength <= 0)
         {
-            MessageBox.Show(this, "Dužina linije stacionaže mora biti broj veći od 0.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            errorMessage = "Dužina linije stacionaže mora biti broj veći od 0.";
+            return false;
+        }
+
+        if (!TryParseAxisCounter(AxisCounterStartBox.Text, out var axisCounterStart))
+        {
+            errorMessage = "Početna vrednost brojača osa mora biti ceo broj veći ili jednak 1.";
+            return false;
+        }
+
+        _state.AxisName = AxisNameBox.Text.Trim();
+        _state.CurveRadius = radius;
+        _state.StartStation = start;
+        _state.EndStation = end;
+        _state.Interval = interval;
+        _state.TextHeight = textHeight;
+        _state.TickLength = tickLength;
+        _state.AxisCounterStart = axisCounterStart;
+        _state.Prefix = string.IsNullOrWhiteSpace(PrefixBox.Text) ? string.Empty : PrefixBox.Text;
+        _state.EqualIntervalInBounds = EqualIntervalCheck.IsChecked == true;
+        _state.WholeInterval = WholeIntervalCheck.IsChecked == true;
+        _state.AlignToStart = AlignStartRadio.IsChecked == true;
+        _state.LabelAtStart = AtStartCheck.IsChecked == true;
+        _state.LabelAtEnd = AtEndCheck.IsChecked == true;
+        _state.LabelAtMainPoints = AtMainPointsCheck.IsChecked == true;
+        _state.LabelFormat = StationFormatBox.SelectedIndex == 1
+            ? StationLabelFormat.ChainageOnly
+            : StationLabelFormat.ProjectCounter;
+        if (!TryParseChainageFormat(ChainageFormatBox.Text, out var chainageFormat))
+        {
+            errorMessage = $"Format ispisa mora biti ceo broj od {ChainageFormatter.MinFormat} do {ChainageFormatter.MaxFormat}.";
+            return false;
+        }
+
+        _state.ChainageFormat = chainageFormat;
+        _state.DrawSegmentLabels = SegmentLabelsCheck.IsChecked == true;
+        return true;
+    }
+
+    private void OnAxisColorClick(object sender, RoutedEventArgs e) =>
+        PickColor(AxisColorButton, value => _state.AxisColorIndex = value);
+
+    private void OnStationTextColorClick(object sender, RoutedEventArgs e) =>
+        PickColor(StationTextColorButton, value => _state.StationTextColorIndex = value);
+
+    private void OnStationTickColorClick(object sender, RoutedEventArgs e) =>
+        PickColor(StationTickColorButton, value => _state.StationTickColorIndex = value);
+
+    private void OnSegmentLabelColorClick(object sender, RoutedEventArgs e) =>
+        PickColor(SegmentLabelColorButton, value => _state.SegmentLabelColorIndex = value);
+
+    private void PickColor(System.Windows.Controls.Button button, Action<short> apply)
+    {
+        var current = button.Tag is short aci ? aci : DrawingColorDefaults.Axis;
+        AciColorHelper.ShowPicker(button, current, selected =>
+        {
+            apply(selected);
+            AciColorHelper.ApplyToButton(button, selected);
+        });
+    }
+
+    private void SaveInputsBestEffort()
+    {
+        if (!string.IsNullOrWhiteSpace(AxisNameBox.Text))
+        {
+            _state.AxisName = AxisNameBox.Text.Trim();
+        }
+
+        if (TryParse(RadiusBox.Text, out var radius))
+        {
+            _state.CurveRadius = radius;
+        }
+
+        if (TryParse(StartStationBox.Text, out var start))
+        {
+            _state.StartStation = Clamp(start, 0, _axisLength);
+        }
+
+        if (TryParse(EndStationBox.Text, out var end))
+        {
+            _state.EndStation = Clamp(end, 0, _axisLength);
+        }
+
+        if (TryParse(IntervalBox.Text, out var interval))
+        {
+            _state.Interval = interval;
+        }
+
+        if (TryParse(TextHeightBox.Text, out var textHeight))
+        {
+            _state.TextHeight = textHeight;
+        }
+
+        if (TryParse(TickLengthBox.Text, out var tickLength))
+        {
+            _state.TickLength = tickLength;
+        }
+
+        if (TryParseAxisCounter(AxisCounterStartBox.Text, out var axisCounterStart))
+        {
+            _state.AxisCounterStart = axisCounterStart;
+        }
+
+        _state.Prefix = PrefixBox.Text;
+        _state.EqualIntervalInBounds = EqualIntervalCheck.IsChecked == true;
+        _state.WholeInterval = WholeIntervalCheck.IsChecked == true;
+        _state.AlignToStart = AlignStartRadio.IsChecked == true;
+        _state.LabelAtStart = AtStartCheck.IsChecked == true;
+        _state.LabelAtEnd = AtEndCheck.IsChecked == true;
+        _state.LabelAtMainPoints = AtMainPointsCheck.IsChecked == true;
+        _state.LabelFormat = StationFormatBox.SelectedIndex == 1
+            ? StationLabelFormat.ChainageOnly
+            : StationLabelFormat.ProjectCounter;
+        if (TryParseChainageFormat(ChainageFormatBox.Text, out var chainageFormat))
+        {
+            _state.ChainageFormat = chainageFormat;
+        }
+
+        _state.DrawSegmentLabels = SegmentLabelsCheck.IsChecked == true;
+    }
+
+    private void OnPickChainageFormat(object sender, RoutedEventArgs e)
+    {
+        var current = TryParseChainageFormat(ChainageFormatBox.Text, out var format)
+            ? format
+            : _state.ChainageFormat;
+        var dialog = new ChainageFormatDialog(current, this);
+        if (dialog.ShowDialog() != true)
+        {
             return;
         }
 
-        AxisName = AxisNameBox.Text.Trim();
-        CurveRadius = radius;
-        StartStation = start;
-        EndStation = end;
-        Interval = interval;
-        TextHeight = textHeight;
-        TickLength = tickLength;
-        Prefix = string.IsNullOrWhiteSpace(PrefixBox.Text) ? string.Empty : PrefixBox.Text;
-
-        StationOptions = new StationLabelOptions
-        {
-            EqualIntervalInBounds = EqualIntervalCheck.IsChecked == true,
-            WholeInterval = WholeIntervalCheck.IsChecked == true,
-            StartStation = start,
-            EndStation = end,
-            AlignToStart = AlignStartRadio.IsChecked == true,
-            LabelAtStart = AtStartCheck.IsChecked == true,
-            LabelAtEnd = AtEndCheck.IsChecked == true,
-            LabelAtMainPoints = AtMainPointsCheck.IsChecked == true,
-            Interval = interval,
-            Prefix = Prefix,
-            TextHeight = textHeight,
-            TickLength = TickLength
-        };
-
-        DialogResult = true;
+        _state.ChainageFormat = dialog.SelectedFormat;
+        ChainageFormatBox.Text = dialog.SelectedFormat.ToString(CultureInfo.InvariantCulture);
+        UpdateChainageFormatPreview();
     }
 
-    private void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;
+    private void OnChainageFormatChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_updating || !_isUiReady)
+        {
+            return;
+        }
+
+        if (TryParseChainageFormat(ChainageFormatBox.Text, out var format))
+        {
+            _state.ChainageFormat = format;
+            UpdateChainageFormatPreview();
+        }
+    }
+
+    private void UpdateChainageFormatPreview()
+    {
+        if (!_isUiReady || ChainageFormatPreview is null)
+        {
+            return;
+        }
+
+        ChainageFormatPreview.Text = ChainageFormatter.GetSampleLabel(_state.ChainageFormat);
+    }
+
+    private static bool TryParseChainageFormat(string text, out int format)
+    {
+        if (!int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out format))
+        {
+            format = ChainageFormatter.DefaultFormat;
+            return false;
+        }
+
+        if (format < ChainageFormatter.MinFormat || format > ChainageFormatter.MaxFormat)
+        {
+            format = ChainageFormatter.DefaultFormat;
+            return false;
+        }
+
+        return true;
+    }
+
+    private void OnCancel(object sender, RoutedEventArgs e)
+    {
+        CloseAction = Plo2TanDialogCloseAction.Cancelled;
+        DialogResult = false;
+    }
+
+    private static double Clamp(double value, double min, double max) =>
+        Math.Max(min, Math.Min(max, value));
 
     private static bool TryParse(string text, out double value) =>
         double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+
+    private static bool TryParseAxisCounter(string text, out int value)
+    {
+        if (!int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) || value < 1)
+        {
+            value = 1;
+            return false;
+        }
+
+        return true;
+    }
 }

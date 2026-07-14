@@ -48,6 +48,7 @@ internal static class AxisGeometryReader
             .Select(entry => entry.Element)
             .ToList();
 
+        ArcOrientation.OrientArcsToChainage(elements);
         AssignStations(elements, startStation);
 
         return new RoadAxis
@@ -63,7 +64,7 @@ internal static class AxisGeometryReader
         return entity switch
         {
             Line line => ReadLine(line),
-            Arc arc => ReadArc(arc),
+            Arc arc => ArcOrientation.ReadArc(arc),
             _ => null
         };
     }
@@ -80,41 +81,6 @@ internal static class AxisGeometryReader
             Center = Point3d.Origin,
             Clockwise = false
         };
-    }
-
-    private static AlignmentElement ReadArc(Arc arc)
-    {
-        var start = arc.StartPoint;
-        var end = arc.EndPoint;
-        var center = arc.Center;
-        var clockwise = IsClockwiseArc(arc);
-
-        return new AlignmentElement
-        {
-            Type = AlignmentElementType.Arc,
-            Start = start,
-            End = end,
-            Length = arc.Length,
-            Radius = arc.Radius,
-            Center = center,
-            Clockwise = clockwise
-        };
-    }
-
-    private static bool IsClockwiseArc(Arc arc)
-    {
-        var start = arc.StartPoint;
-        var end = arc.EndPoint;
-        var chord = end - start;
-        if (chord.Length < 1e-9)
-        {
-            return false;
-        }
-
-        var chordDir = chord.GetNormal();
-        var centerVec = arc.Center - start;
-        var cross = chordDir.X * centerVec.Y - chordDir.Y * centerVec.X;
-        return cross < 0;
     }
 
     private static void AssignStations(List<AlignmentElement> elements, double startStation)

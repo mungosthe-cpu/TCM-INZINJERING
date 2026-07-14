@@ -35,6 +35,7 @@ internal static class AxisGeometryUpdater
         }
 
         var elements = entries.Select(entry => entry.Element).ToList();
+        ArcOrientation.OrientArcsToChainage(elements);
         AssignStations(elements, startStation);
 
         for (var i = 0; i < entries.Count; i++)
@@ -247,38 +248,9 @@ internal static class AxisGeometryUpdater
                 Center = Point3d.Origin,
                 Clockwise = false
             },
-            Arc arc => ReadArc(arc),
+            Arc arc => ArcOrientation.ReadArc(arc),
             _ => null
         };
-    }
-
-    private static AlignmentElement ReadArc(Arc arc)
-    {
-        var clockwise = IsClockwiseArc(arc);
-        return new AlignmentElement
-        {
-            Type = AlignmentElementType.Arc,
-            Start = arc.StartPoint,
-            End = arc.EndPoint,
-            Length = arc.Length,
-            Radius = arc.Radius,
-            Center = arc.Center,
-            Clockwise = clockwise
-        };
-    }
-
-    private static bool IsClockwiseArc(Arc arc)
-    {
-        var chord = arc.EndPoint - arc.StartPoint;
-        if (chord.Length < 1e-9)
-        {
-            return false;
-        }
-
-        var chordDir = chord.GetNormal();
-        var centerVec = arc.Center - arc.StartPoint;
-        var cross = chordDir.X * centerVec.Y - chordDir.Y * centerVec.X;
-        return cross < 0;
     }
 
     private static void AssignStations(List<AlignmentElement> elements, double startStation)

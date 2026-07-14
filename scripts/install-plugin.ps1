@@ -1,7 +1,9 @@
 param(
     [string]$BundleSource = (Join-Path $PSScriptRoot "..\TcmInzenjering.bundle"),
     [string]$BricsBundleSource = (Join-Path $PSScriptRoot "..\TcmInzenjering.BricsCAD.bundle"),
-    [string]$DllPath = ""
+    [string]$DllPath = "",
+    # Bez dijaloga (CI / tiha instalacija). Ako je AutoCAD otvoren - prekida se.
+    [switch]$Quiet
 )
 
 $ErrorActionPreference = "Continue"
@@ -10,6 +12,8 @@ $bundleName = "TcmInzenjering.bundle"
 $bricsBundleName = "TcmInzenjering.BricsCAD.bundle"
 $appName = "TcmInzenjering"
 $description = "TCM-INZINJERING"
+$uiTitle = "TCM-INZINJERING - Azuriranje plugina"
+$nl = [Environment]::NewLine
 
 $autocadSeries = @(
     @{ Series = "R23.1"; Modern = $false; Year = 2020 },
@@ -20,6 +24,105 @@ $autocadSeries = @(
     @{ Series = "R25.0"; Modern = $true; Year = 2025 },
     @{ Series = "R25.1"; Modern = $true; Year = 2026 }
 )
+
+function Show-UiMessage {
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet("Info", "Warning", "Error")]
+        [string]$Icon = "Info",
+        [ValidateSet("OK", "RetryCancel", "OKCancel")]
+        [string]$Buttons = "OK"
+    )
+
+    if ($Quiet) {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue | Out-Null
+        return [System.Windows.Forms.DialogResult]::OK
+    }
+
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue | Out-Null
+
+    $boxIcon = switch ($Icon) {
+        "Warning" { [System.Windows.Forms.MessageBoxIcon]::Warning }
+        "Error"   { [System.Windows.Forms.MessageBoxIcon]::Error }
+        default   { [System.Windows.Forms.MessageBoxIcon]::Information }
+    }
+
+    $boxButtons = switch ($Buttons) {
+        "RetryCancel" { [System.Windows.Forms.MessageBoxButtons]::RetryCancel }
+        "OKCancel"    { [System.Windows.Forms.MessageBoxButtons]::OKCancel }
+        default       { [System.Windows.Forms.MessageBoxButtons]::OK }
+    }
+
+    return [System.Windows.Forms.MessageBox]::Show(
+        $Message,
+        $uiTitle,
+        $boxButtons,
+        $boxIcon)
+}
+
+function Get-CadProcesses {
+    Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProcessName -match '^(acad|bricscad)$' }
+}
+
+function Get-CadProcessSummary {
+    $procs = @(Get-CadProcesses)
+    if ($procs.Count -eq 0) {
+        return $null
+    }
+
+    $names = $procs |
+        Group-Object ProcessName |
+        ForEach-Object { "$($_.Name).exe ($($_.Count))" }
+    return ($names -join ", ")
+}
+
+function Wait-ForCadClosed {
+    while ($true) {
+        $summary = Get-CadProcessSummary
+        if (-not $summary) {
+            return $true
+        }
+
+        Write-Host "Pokrenuto: $summary - sacuvaj i zatvori pre instalacije." -ForegroundColor Yellow
+
+        if ($Quiet) {
+            Write-Host "GRESKA: AutoCAD/BricsCAD je otvoren. Zatvorite ga pa ponovo pokrenite instalaciju (ili bez -Quiet)." -ForegroundColor Red
+            return $false
+        }
+
+        $msgClose = "Radi instalacije nove verzije plugina potrebno je zatvoriti AutoCAD (i BricsCAD ako je otvoren)." +
+            $nl + $nl +
+            "Trenutno pokrenuto: $summary" +
+            $nl + $nl +
+            "Sacuvajte crteze, zatvorite program, zatim kliknite OK."
+
+        $answer = Show-UiMessage -Icon Warning -Buttons OKCancel -Message $msgClose
+        if ($answer -eq [System.Windows.Forms.DialogResult]::Cancel) {
+            Write-Host "Instalacija otkazana (AutoCAD nije zatvoren)." -ForegroundColor Yellow
+            return $false
+        }
+
+        Start-Sleep -Milliseconds 800
+
+        $summary = Get-CadProcessSummary
+        if (-not $summary) {
+            return $true
+        }
+
+        $msgRetry = "AutoCAD/BricsCAD je i dalje pokrenut ($summary)." +
+            $nl + $nl +
+            "DLL je zakljucan dok je program otvoren." +
+            $nl + $nl +
+            "Zatvorite ga pa izaberite Pokusaj ponovo."
+
+        $retry = Show-UiMessage -Icon Warning -Buttons RetryCancel -Message $msgRetry
+        if ($retry -eq [System.Windows.Forms.DialogResult]::Cancel) {
+            Write-Host "Instalacija otkazana." -ForegroundColor Yellow
+            return $false
+        }
+    }
+}
 
 function Deploy-Bundle {
     param([string]$Source, [string]$TargetRoot)
@@ -44,8 +147,6 @@ function Deploy-Bundle {
     }
 }
 
-Write-Host "TCM-INZINJERING: instalacija plugina..." -ForegroundColor Cyan
-
 function Remove-LegacyBundleFiles {
     param([string]$BundleRoot)
 
@@ -60,37 +161,6 @@ function Remove-LegacyBundleFiles {
         Remove-Item $legacyIcons -Recurse -Force
         Write-Host "  Uklonjen stari folder: Contents\Icons" -ForegroundColor DarkGray
     }
-}
-
-$deployTargets = @(
-    (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName"),
-    "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName",
-    (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName"),
-    (Join-Path $env:APPDATA "Bricsys\ApplicationPlugins\$bricsBundleName"),
-    "C:\Program Files\Bricsys\ApplicationPlugins\$bricsBundleName"
-)
-
-Deploy-Bundle $BundleSource (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName") | Out-Null
-Remove-LegacyBundleFiles (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName")
-Deploy-Bundle $BundleSource "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName" | Out-Null
-if (Test-Path "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName") {
-    Remove-LegacyBundleFiles "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName"
-}
-Deploy-Bundle $BundleSource (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName") | Out-Null
-if (Test-Path (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName")) {
-    Remove-LegacyBundleFiles (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName")
-}
-if (Test-Path $BricsBundleSource) {
-    Deploy-Bundle $BricsBundleSource (Join-Path $env:APPDATA "Bricsys\ApplicationPlugins\$bricsBundleName") | Out-Null
-    Deploy-Bundle $BricsBundleSource "C:\Program Files\Bricsys\ApplicationPlugins\$bricsBundleName" | Out-Null
-}
-
-$appDataDll = Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName\Contents\net8\TcmInzenjering.Plugin.dll"
-if (Test-Path -LiteralPath $appDataDll) {
-    $DllPath = $appDataDll
-}
-elseif ([string]::IsNullOrWhiteSpace($DllPath) -or -not (Test-Path -LiteralPath $DllPath)) {
-    throw "DLL nije pronadjen: $appDataDll"
 }
 
 function Register-Plugin {
@@ -124,6 +194,43 @@ function Register-Plugin {
     }
 }
 
+Write-Host "TCM-INZINJERING: instalacija / azuriranje plugina..." -ForegroundColor Cyan
+
+if (-not (Wait-ForCadClosed)) {
+    exit 1
+}
+
+Write-Host "AutoCAD/BricsCAD nije pokrenut - nastavljam instalaciju." -ForegroundColor Green
+
+Deploy-Bundle $BundleSource (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName") | Out-Null
+Remove-LegacyBundleFiles (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName")
+
+Deploy-Bundle $BundleSource "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName" | Out-Null
+if (Test-Path "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName") {
+    Remove-LegacyBundleFiles "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName"
+}
+
+Deploy-Bundle $BundleSource (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName") | Out-Null
+if (Test-Path (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName")) {
+    Remove-LegacyBundleFiles (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName")
+}
+
+if (Test-Path $BricsBundleSource) {
+    Deploy-Bundle $BricsBundleSource (Join-Path $env:APPDATA "Bricsys\ApplicationPlugins\$bricsBundleName") | Out-Null
+    Deploy-Bundle $BricsBundleSource "C:\Program Files\Bricsys\ApplicationPlugins\$bricsBundleName" | Out-Null
+}
+
+$appDataDll = Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName\Contents\net8\TcmInzenjering.Plugin.dll"
+if (Test-Path -LiteralPath $appDataDll) {
+    $DllPath = $appDataDll
+}
+elseif ([string]::IsNullOrWhiteSpace($DllPath) -or -not (Test-Path -LiteralPath $DllPath)) {
+    $err = "DLL nije pronadjen: $appDataDll"
+    Write-Host $err -ForegroundColor Red
+    Show-UiMessage -Icon Error -Message ("Instalacija nije uspela." + $nl + $nl + $err)
+    throw $err
+}
+
 $registered = 0
 foreach ($seriesInfo in $autocadSeries) {
     $hklmRoot = "HKLM:\SOFTWARE\Autodesk\AutoCAD\$($seriesInfo.Series)"
@@ -131,7 +238,9 @@ foreach ($seriesInfo in $autocadSeries) {
         continue
     }
 
-    $productCodes = Get-ChildItem $hklmRoot | Where-Object { $_.PSChildName -like "ACAD-*" } | Select-Object -ExpandProperty PSChildName
+    $productCodes = Get-ChildItem $hklmRoot |
+        Where-Object { $_.PSChildName -like "ACAD-*" } |
+        Select-Object -ExpandProperty PSChildName
     foreach ($code in $productCodes) {
         $hkcuPath = "HKCU:\Software\Autodesk\AutoCAD\$($seriesInfo.Series)\$code\Applications"
         if (Register-Plugin $hkcuPath $code $seriesInfo.Series $seriesInfo.Modern) {
@@ -148,4 +257,7 @@ else {
 }
 
 Write-Host "LOADER = $DllPath" -ForegroundColor DarkGray
-Write-Host "Restartuj AutoCAD/BricsCAD. Plugin ce se ucitati automatski." -ForegroundColor Cyan
+
+$doneMessage = "Nova verzija TCM-INZINJERING plugina je uspesno instalirana." + $nl + $nl + "Mozete ponovo pokrenuti AutoCAD."
+Write-Host "Nova verzija TCM-INZINJERING plugina je uspesno instalirana. Mozete ponovo pokrenuti AutoCAD." -ForegroundColor Cyan
+Show-UiMessage -Icon Info -Message $doneMessage

@@ -1,6 +1,7 @@
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 #if NET8_0_OR_GREATER
 using TcmInzenjering.Plugin.Dialogs;
@@ -53,40 +54,143 @@ public sealed class RoadCommands
                 SymbolUtilityServices.GetBlockModelSpaceId(db),
                 OpenMode.ForWrite);
 
-            DrawAxis(tr, modelSpace, axis);
+            DrawAxis(tr, modelSpace, axis, polylineId, stationOptions.AxisColorIndex);
             var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, axis, stationOptions);
-            var radiusCount = RoadDrawing.DrawRadiusLabels(tr, modelSpace, axis, textHeight);
-            RoadDrawing.SaveAxisMetadata(tr, db, axis, stationOptions, curveRadius);
+            var radiusCount = 0;
+            var segmentCount = stationOptions.DrawSegmentLabels
+                ? RoadDrawing.DrawSegmentLabels(
+                    tr,
+                    modelSpace,
+                    axis,
+                    textHeight,
+                    stationOptions.LabelSideSign,
+                    stationOptions.SegmentLabelColorIndex)
+                : 0;
+            if (axis.Elements.Count > 0)
+            {
+                AxisReferenceTracker.Update(axis.Name, axis.Elements[0].Start);
+            }
+
+            var polylineForLink = (Polyline)tr.GetObject(polylineId, OpenMode.ForWrite);
+            RoadXData.AttachSourcePolyline(polylineForLink, axisName);
+            RoadDrawing.SaveAxisMetadata(tr, db, axis, stationOptions, curveRadius, polylineId);
             tr.Commit();
 
-            PrintAxisReport(ed, axis, labelCount, radiusCount);
+            PrintAxisReport(ed, axis, labelCount, radiusCount, segmentCount);
 #else
-            var dialog = new Plo2TanDialog(polylineLength);
-            var accepted = AcApp.ShowModalWindow(dialog) == true;
-            if (!accepted)
+            var dialogState = new Plo2TanDialogState
             {
-                ed.WriteMessage("\nTCM-INZINJERING: komanda otkazana.");
-                return;
+                EndStation = polylineLength
+            };
+            Plo2TanDialogPreferences.ApplyTo(dialogState);
+
+            Plo2TanDialog? dialog = null;
+            while (true)
+            {
+                dialog = new Plo2TanDialog(polylineLength, dialogState);
+                var accepted = AcApp.ShowModalWindow(dialog) == true;
+                if (accepted && dialog.CloseAction == Plo2TanDialogCloseAction.Confirmed)
+                {
+                    break;
+                }
+
+                switch (dialog.CloseAction)
+                {
+                    case Plo2TanDialogCloseAction.PickStartStation:
+                        if (PolylineStationPicker.TryPickDistance(
+                                doc,
+                                polylineId,
+                                "Odredite tacku na polyliniji za pocetak stacionaza:",
+                                out var startDistance))
+                        {
+                            dialogState.StartStation = Math.Max(0, Math.Min(startDistance, polylineLength));
+                            if (dialogState.EndStation < dialogState.StartStation)
+                            {
+                                dialogState.EndStation = polylineLength;
+                            }
+                        }
+
+                        continue;
+                    case Plo2TanDialogCloseAction.PickEndStation:
+                        if (PolylineStationPicker.TryPickDistance(
+                                doc,
+                                polylineId,
+                                "Odredite tacku na polyliniji za kraj stacionaza:",
+                                out var endDistance))
+                        {
+                            var minEnd = Math.Max(0, dialogState.StartStation);
+                            dialogState.EndStation = Math.Max(minEnd, Math.Min(endDistance, polylineLength));
+                        }
+
+                        continue;
+                    default:
+                        ed.WriteMessage("\nTCM-INZINJERING: komanda otkazana.");
+                        return;
+                }
             }
 
             using var tr = db.TransactionManager.StartTransaction();
             var polyline = (Polyline)tr.GetObject(polylineId, OpenMode.ForRead);
-            var axis = PolylineToTangentConverter.Convert(
+            var fullAxis = PolylineToTangentConverter.Convert(
                 polyline,
-                dialog.CurveRadius,
-                dialog.StartStation,
+                dialog!.CurveRadius,
+                0,
                 dialog.AxisName);
+            var stationOptions = AxisStationMapper.MapLabelOptionsToAxis(
+                polyline,
+                fullAxis,
+                dialog.StationOptions);
+            var visibleAxis = RoadAxisTrimmer.Trim(
+                fullAxis,
+                stationOptions.StartStation,
+                stationOptions.EndStation);
             var modelSpace = (BlockTableRecord)tr.GetObject(
                 SymbolUtilityServices.GetBlockModelSpaceId(db),
                 OpenMode.ForWrite);
 
-            DrawAxis(tr, modelSpace, axis);
-            var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, axis, dialog.StationOptions);
-            var radiusCount = RoadDrawing.DrawRadiusLabels(tr, modelSpace, axis, dialog.TextHeight);
-            RoadDrawing.SaveAxisMetadata(tr, db, axis, dialog.StationOptions, dialog.CurveRadius);
+            // Ponovni OK (uredjivanje polozaja / tipa oznake) — obrisi staro, pa iscrtaj iznova.
+            RoadDrawing.RunWithUnlockedAxisLayer(tr, db, () =>
+            {
+                StationLabelService.DeleteLabels(tr, db, dialog.AxisName);
+                StationLabelService.DeleteCrossAnnotations(tr, db, dialog.AxisName);
+                StationLabelService.DeleteSegmentLabels(tr, db, dialog.AxisName);
+                StationLabelService.DeleteRadiusLabels(tr, db, dialog.AxisName);
+                StationLabelService.DeleteAxisEntities(tr, db, dialog.AxisName);
+            });
+
+            DrawAxis(tr, modelSpace, visibleAxis, polylineId, stationOptions.AxisColorIndex);
+            var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, visibleAxis, stationOptions);
+            var radiusCount = 0;
+            var segmentCount = stationOptions.DrawSegmentLabels
+                ? RoadDrawing.DrawSegmentLabels(
+                    tr,
+                    modelSpace,
+                    visibleAxis,
+                    dialog.TextHeight,
+                    stationOptions.LabelSideSign,
+                    stationOptions.SegmentLabelColorIndex)
+                : 0;
+            if (visibleAxis.Elements.Count > 0)
+            {
+                AxisReferenceTracker.Update(dialog.AxisName, visibleAxis.Elements[0].Start);
+            }
+
+            var polylineForLink = (Polyline)tr.GetObject(polylineId, OpenMode.ForWrite);
+            RoadXData.AttachSourcePolyline(polylineForLink, dialog.AxisName);
+            RoadDrawing.SaveAxisMetadata(
+                tr,
+                db,
+                fullAxis,
+                stationOptions,
+                dialog.CurveRadius,
+                polylineId,
+                dialog.StartStation,
+                dialog.EndStation);
             tr.Commit();
 
-            PrintAxisReport(ed, axis, labelCount, radiusCount);
+            ed.WriteMessage(
+                $"\n  Interval crtanja osovine: {stationOptions.StartStation:F2} m - {stationOptions.EndStation:F2} m (odabrano na polyliniji: {dialog.StartStation:F2} - {dialog.EndStation:F2} m)");
+            PrintAxisReport(ed, visibleAxis, labelCount, radiusCount, segmentCount);
 #endif
         }
         catch (Autodesk.AutoCAD.Runtime.Exception acEx)
@@ -146,7 +250,7 @@ public sealed class RoadCommands
             SymbolUtilityServices.GetBlockModelSpaceId(db),
             OpenMode.ForWrite);
 
-        var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, axis, interval.Value, 2.0, 2.5, "STA ");
+        var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, axis, interval.Value, RoadDrawing.DefaultTickLength, 2.5, "STA ");
         tr.Commit();
 
         ed.WriteMessage($"\nTCM-INZINJERING: Iscrtano {labelCount} oznaka stacionaze.");
@@ -214,6 +318,71 @@ public sealed class RoadCommands
         PrintAxisReport(ed, axis, 0);
     }
 
+    [CommandMethod("TCMPOPOSPOZ", CommandFlags.Modal)]
+    public void ConfigureCrossAxisPlacement()
+    {
+        CrossAxisCommandService.Run(AcApp.DocumentManager.MdiActiveDocument);
+    }
+
+    [CommandMethod("TCMOSTAB", CommandFlags.Modal)]
+    public void InsertAxisTable()
+    {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
+        var ed = doc.Editor;
+        var db = doc.Database;
+
+        var axisName = PromptString(ed, "\nIme osovine za tabelu <OS-1>: ", "OS-1");
+        if (axisName is null)
+        {
+            return;
+        }
+
+        var pointResult = ed.GetPoint(new PromptPointOptions("\nOdredite polozaj tabele osovine: "));
+        if (pointResult.Status != PromptStatus.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            using var tr = db.TransactionManager.StartTransaction();
+            var metadata = RoadAxisStore.Load(tr, db, axisName);
+            if (metadata is null)
+            {
+                ed.WriteMessage($"\nTCM-INZINJERING: osovina '{axisName}' nije pronadjena.");
+                return;
+            }
+
+            var axis = AxisGeometryReader.ReadAxis(tr, db, axisName, metadata.StartStation);
+            if (axis is null)
+            {
+                ed.WriteMessage($"\nTCM-INZINJERING: nema nacrtane osovine '{axisName}'.");
+                return;
+            }
+
+            var modelSpace = (BlockTableRecord)tr.GetObject(
+                SymbolUtilityServices.GetBlockModelSpaceId(db),
+                OpenMode.ForWrite);
+            var count = RoadDrawing.DrawAxisTable(
+                tr,
+                modelSpace,
+                axis,
+                pointResult.Value,
+                metadata.TextHeight);
+            tr.Commit();
+            ed.WriteMessage($"\nTCM-INZINJERING: Ubacena tabela osovine '{axisName}' ({count} elemenata).");
+        }
+        catch (System.Exception ex)
+        {
+            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+        }
+    }
+
     private static ObjectId SelectPolyline(Editor ed)
     {
         var options = new PromptEntityOptions("\nIzaberite polylinu osovine: ");
@@ -250,8 +419,13 @@ public sealed class RoadCommands
         return result.Status == PromptStatus.OK ? result.StringResult : null;
     }
 
-    private static void DrawAxis(Transaction tr, BlockTableRecord modelSpace, RoadAxis axis) =>
-        RoadDrawing.DrawAxis(tr, modelSpace, axis);
+    private static void DrawAxis(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        ObjectId sourcePolylineId = default,
+        short axisColorIndex = DrawingColorDefaults.Axis) =>
+        RoadDrawing.DrawAxis(tr, modelSpace, axis, sourcePolylineId, axisColorIndex);
 
     private static int DrawStationLabels(
         Transaction tr,
@@ -263,7 +437,7 @@ public sealed class RoadCommands
         string prefix) =>
         RoadDrawing.DrawStationLabels(tr, modelSpace, axis, interval, tickLength, textHeight, prefix);
 
-    private static void PrintAxisReport(Editor ed, RoadAxis axis, int labelCount, int radiusCount = 0)
+    private static void PrintAxisReport(Editor ed, RoadAxis axis, int labelCount, int radiusCount = 0, int segmentCount = 0)
     {
         ed.WriteMessage($"\nTCM-INZINJERING: Osovina '{axis.Name}' kreirana.");
         ed.WriteMessage($"\n  Pocetna stacionaza : {RoadDrawing.FormatStation(axis.StartStation, string.Empty)}");
@@ -288,6 +462,11 @@ public sealed class RoadCommands
         if (radiusCount > 0)
         {
             ed.WriteMessage($"\n  Iscrtano oznaka radijusa: {radiusCount}");
+        }
+
+        if (segmentCount > 0)
+        {
+            ed.WriteMessage($"\n  Iscrtano oznaka segmenata: {segmentCount}");
         }
     }
 }

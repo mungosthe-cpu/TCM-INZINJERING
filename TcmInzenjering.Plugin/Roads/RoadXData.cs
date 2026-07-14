@@ -7,11 +7,24 @@ internal static class RoadXData
     public const string RoleAxis = "AXIS";
     public const string RoleTick = "TICK";
     public const string RoleText = "TEXT";
+    /// <summary>Deo stacionaze (npr. 0-380.00) kod projektnog formata — odvojeno od RoleText (OSA 20).</summary>
+    public const string RoleChainage = "CHNG";
     public const string RoleRadiusText = "RTXT";
     public const string RoleRadiusDimArc = "RARC";
     public const string RoleRadiusArrowStart = "RARS";
     public const string RoleRadiusArrowEnd = "RARE";
     public const string RoleRadiusTick = "RTCK";
+    public const string RoleSourcePolyline = "SRCPL";
+    public const string RoleSegmentText = "SEGT";
+    public const string RoleTable = "TABL";
+
+    public static void AttachSourcePolyline(Entity entity, string axisName)
+    {
+        SetXData(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleSourcePolyline),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName)));
+    }
 
     public static void AttachAxisElement(Entity entity, string axisName, int index, AlignmentElement element)
     {
@@ -44,6 +57,42 @@ internal static class RoadXData
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName),
             new TypedValue((int)DxfCode.ExtendedDataInteger16, (short)arcIndex),
             new TypedValue((int)DxfCode.ExtendedDataReal, radius)));
+    }
+
+    public static void AttachSegmentLabel(Entity entity, string axisName, int index)
+    {
+        SetXData(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleSegmentText),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName),
+            new TypedValue((int)DxfCode.ExtendedDataInteger16, (short)index)));
+    }
+
+    public static void AttachAxisTable(Entity entity, string axisName)
+    {
+        SetXData(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleTable),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName)));
+    }
+
+    public static bool TryReadSourcePolyline(Entity entity, out string axisName)
+    {
+        axisName = string.Empty;
+        var values = entity.GetXDataForApplication(RoadDrawing.RegAppName);
+        if (values is null)
+        {
+            return false;
+        }
+
+        var items = values.AsArray();
+        if (items.Length < 3 || items[1].Value?.ToString() != RoleSourcePolyline)
+        {
+            return false;
+        }
+
+        axisName = items[2].Value?.ToString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(axisName);
     }
 
     public static bool TryReadAxisElement(Entity entity, out string axisName, out int index)
@@ -87,7 +136,7 @@ internal static class RoadXData
         }
 
         role = items[1].Value?.ToString() ?? string.Empty;
-        if (role is not RoleTick and not RoleText)
+        if (role is not RoleTick and not RoleText and not RoleChainage)
         {
             return false;
         }
@@ -116,6 +165,25 @@ internal static class RoadXData
 
         role = items[1].Value?.ToString() ?? string.Empty;
         if (role is not RoleRadiusText and not RoleRadiusDimArc and not RoleRadiusArrowStart and not RoleRadiusArrowEnd and not RoleRadiusTick)
+        {
+            return false;
+        }
+
+        axisName = items[2].Value?.ToString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(axisName);
+    }
+
+    public static bool TryReadSegmentLabel(Entity entity, out string axisName)
+    {
+        axisName = string.Empty;
+        var values = entity.GetXDataForApplication(RoadDrawing.RegAppName);
+        if (values is null)
+        {
+            return false;
+        }
+
+        var items = values.AsArray();
+        if (items.Length < 3 || items[1].Value?.ToString() != RoleSegmentText)
         {
             return false;
         }

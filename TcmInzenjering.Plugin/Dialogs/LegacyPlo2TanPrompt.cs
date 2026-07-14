@@ -22,7 +22,8 @@ internal static class LegacyPlo2TanPrompt
             Interval = 20,
             Prefix = "STA ",
             TextHeight = 2.5,
-            TickLength = 2.0
+            TickLength = RoadDrawing.DefaultTickLength,
+            AxisCounterStart = 1
         };
 
         var nameResult = ed.GetString("\nIme osovine [OS-1]: ");
@@ -66,7 +67,8 @@ internal static class LegacyPlo2TanPrompt
                 Interval = intervalResult.Value,
                 Prefix = "STA ",
                 TextHeight = 2.5,
-                TickLength = 2.0
+                TickLength = RoadDrawing.DefaultTickLength,
+                AxisCounterStart = 1
             };
         }
 

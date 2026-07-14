@@ -6,6 +6,8 @@ namespace TcmInzenjering.Plugin.Ribbon;
 
 internal static class RibbonIconLoader
 {
+    private const int RibbonIconSize = 32;
+
     public static BitmapImage? Load(string iconName)
     {
         foreach (var directory in GetIconDirectories())
@@ -16,16 +18,34 @@ internal static class RibbonIconLoader
                 continue;
             }
 
-            var image = new BitmapImage();
-            image.BeginInit();
-            image.UriSource = new Uri(path, UriKind.Absolute);
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.EndInit();
-            image.Freeze();
-            return image;
+            return LoadFromPath(path);
+        }
+
+        if (string.Equals(iconName, "toolspace", StringComparison.OrdinalIgnoreCase))
+        {
+            var fallback = GetIconDirectories()
+                .Select(directory => Path.Combine(directory, "info.png"))
+                .FirstOrDefault(File.Exists);
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                return LoadFromPath(fallback);
+            }
         }
 
         return null;
+    }
+
+    private static BitmapImage LoadFromPath(string path)
+    {
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.UriSource = new Uri(path, UriKind.Absolute);
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.DecodePixelWidth = RibbonIconSize;
+        image.DecodePixelHeight = RibbonIconSize;
+        image.EndInit();
+        image.Freeze();
+        return image;
     }
 
     private static IEnumerable<string> GetIconDirectories()

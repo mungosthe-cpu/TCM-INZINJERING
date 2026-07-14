@@ -54,4 +54,24 @@ public sealed class Commands
         doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon nije dostupan. Koristite komande TCMPLO2TAN, TCMSTACOZN, TCMUPDATE.");
 #endif
     }
+
+    [CommandMethod("TCMSTACFONT", CommandFlags.Modal)]
+    public void ConfigureStationFont()
+    {
+#if NET48
+        AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
+            "\nTCM-INZINJERING: Podesavanje fonta stacionaze je dostupno u AutoCAD 2025+ verziji plugina.");
+        return;
+#else
+        var dialog = new Dialogs.StationFontDialog();
+        if (AcApp.ShowModalWindow(dialog) != true)
+        {
+            return;
+        }
+
+        Roads.StationFontPreferences.Save(dialog.SelectedFontFile);
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        doc?.Editor.WriteMessage($"\nTCM-INZINJERING: Font stacionaze: {dialog.SelectedFontFile}. Osvezi stacionaze (TCMSTACAZUR).");
+#endif
+    }
 }

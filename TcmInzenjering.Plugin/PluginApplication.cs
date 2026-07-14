@@ -36,6 +36,8 @@ public sealed class PluginApplication : IExtensionApplication
             Autodesk.AutoCAD.ApplicationServices.Core.Application.SystemVariableChanged += OnSystemVariableChanged;
 #endif
             Roads.AxisChangeMonitor.Initialize();
+            Roads.AxisSelectionCoordinator.Initialize();
+            Roads.StationFontPreferences.Load();
             WriteMessage($"TCM-INZINJERING v{PluginInfo.Version}: plugin ucitan. Komande: TCMPLO2TAN, TCMUPDATE, TCMSTACAZUR");
             System.Threading.Tasks.Task.Run(UpdateCommands.CheckForUpdatesOnStartup);
         }
@@ -53,6 +55,7 @@ public sealed class PluginApplication : IExtensionApplication
         Autodesk.AutoCAD.ApplicationServices.Core.Application.SystemVariableChanged -= OnSystemVariableChanged;
 #endif
         Roads.AxisChangeMonitor.Terminate();
+        Roads.AxisSelectionCoordinator.Terminate();
     }
 
 #if NET8_0_OR_GREATER

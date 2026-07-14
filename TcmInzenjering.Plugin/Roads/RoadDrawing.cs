@@ -9,14 +9,60 @@ internal static class RoadDrawing
     public const string AxisLayerName = "TCM_OSOVINA";
     public const string StationLayerName = "TCM_STACIONAZA";
     public const string RadiusLayerName = "TCM_RADIJUS";
+    public const string SegmentLayerName = "TCM_SEGMENT";
+    public const string TableLayerName = "TCM_TABELA";
     public const string RegAppName = "TCM_INZINJERING";
-    public const double DefaultLabelSideSign = 1.0;
+    public const double DefaultLabelSideSign = 1.0; // +1 = leva strana u smeru rasta stacionaze
+    public const double DefaultTickLength = 15.0;
+    public const double StationTextGapFromTick = 1.0;
 
-    public static ObjectIdCollection DrawAxis(Transaction tr, BlockTableRecord modelSpace, RoadAxis axis)
+    public static ObjectIdCollection DrawAxis(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        ObjectId sourcePolylineId = default,
+        short axisColorIndex = DrawingColorDefaults.Axis)
     {
-        EnsureLayer(tr, modelSpace.Database, AxisLayerName, Color.FromColorIndex(ColorMethod.ByAci, 1));
+        ObjectIdCollection? ids = null;
+        RunWithUnlockedAxisLayer(tr, modelSpace.Database, () =>
+        {
+            ids = DrawAxisCore(tr, modelSpace, axis, sourcePolylineId, axisColorIndex);
+        });
+
+        return ids ?? new ObjectIdCollection();
+    }
+
+    public static void RunWithUnlockedAxisLayer(Transaction tr, Database db, Action action)
+    {
+        PrepareAxisLayer(tr, db);
+        UnlockAxisLayer(tr, db);
+        try
+        {
+            action();
+        }
+        finally
+        {
+            LockAxisLayer(tr, db);
+        }
+    }
+
+    public static void EnsureAxisLayerPickThrough(Transaction tr, Database db)
+    {
+        PrepareAxisLayer(tr, db);
+        LockAxisLayer(tr, db);
+    }
+
+    internal static ObjectIdCollection DrawAxisCore(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        ObjectId sourcePolylineId,
+        short axisColorIndex = DrawingColorDefaults.Axis)
+    {
         EnsureLayer(tr, modelSpace.Database, StationLayerName, Color.FromColorIndex(ColorMethod.ByAci, 3));
         EnsureLayer(tr, modelSpace.Database, RadiusLayerName, Color.FromColorIndex(ColorMethod.ByAci, 2));
+        EnsureLayer(tr, modelSpace.Database, SegmentLayerName, Color.FromColorIndex(ColorMethod.ByAci, 4));
+        EnsureLayer(tr, modelSpace.Database, TableLayerName, Color.FromColorIndex(ColorMethod.ByAci, 7));
         EnsureRegApp(tr, modelSpace.Database);
 
         var ids = new ObjectIdCollection();
@@ -28,11 +74,17 @@ internal static class RoadDrawing
                 : CreateArc(element);
 
             entity.Layer = AxisLayerName;
+            entity.Color = ToAciColor(axisColorIndex);
             modelSpace.AppendEntity(entity);
             tr.AddNewlyCreatedDBObject(entity, true);
             RoadXData.AttachAxisElement(entity, axis.Name, index, element);
             ids.Add(entity.ObjectId);
             index++;
+        }
+
+        if (!sourcePolylineId.IsNull)
+        {
+            PlaceAxisBelowSourcePolyline(tr, modelSpace, ids, sourcePolylineId);
         }
 
         return ids;
@@ -79,54 +131,115 @@ internal static class RoadDrawing
 
         EnsureLayer(tr, modelSpace.Database, StationLayerName, Color.FromColorIndex(ColorMethod.ByAci, 3));
         EnsureRegApp(tr, modelSpace.Database);
+        StationFontPreferences.Load();
+        var textStyleId = StationTextStyleHelper.Ensure(tr, modelSpace.Database, StationFontPreferences.FontFileName);
 
         var count = 0;
         foreach (var station in CollectStationValues(axis, options).OrderBy(static s => s))
         {
             var point = axis.GetPointAtStation(station);
-            var direction = axis.GetDirectionAtStation(station);
+            var direction = axis.SampleDirectionAtStation(station);
             if (point is null || direction is null)
             {
                 continue;
             }
 
+            // Leva strana polilinije gledano u smeru rasta stacionaze (LabelSideSign = -1 -> desna).
             var sideNormal = GetSideNormal(direction.Value, options.LabelSideSign);
             var halfTick = options.TickLength / 2.0;
+            // Unutar krivine (PC..PT): ista boja kao oznaka radijusa L/R.
+            var onCurve = IsStationWithinArc(axis, station);
+            var markColor = onCurve
+                ? ToAciColor(options.SegmentLabelColorIndex)
+                : ToAciColor(options.StationTickColorIndex);
+            var textColor = onCurve
+                ? ToAciColor(options.SegmentLabelColorIndex)
+                : ToAciColor(options.StationTextColorIndex);
 
-            // Tick je centriran na osi i ide popreko nje.
+            // Tick je centriran na osi; tickEnd je na strani oznake (levo).
             var tickStart = point.Value - sideNormal * halfTick;
             var tickEnd = point.Value + sideNormal * halfTick;
 
             var tick = new Line(tickStart, tickEnd)
             {
                 Layer = StationLayerName,
-                Color = Color.FromColorIndex(ColorMethod.ByLayer, 256)
+                Color = markColor
             };
             modelSpace.AppendEntity(tick);
             tr.AddNewlyCreatedDBObject(tick, true);
             RoadXData.AttachStationLabel(tick, axis.Name, RoadXData.RoleTick, station);
 
-            var textGap = options.TextHeight * 0.35;
-            var textPosition = tickEnd + sideNormal * textGap;
-            var textRotation = GetReadableTextRotation(sideNormal);
-            var text = new DBText
+            var stationCounter = options.AxisCounterStart + count;
+            var relativeStation = Math.Max(0, station - options.StartStation);
+            var textRotation = GetPerpendicularLabelRotation(direction.Value, options.LabelSideSign);
+
+            if (options.LabelFormat == StationLabelFormat.ChainageOnly)
             {
-                Position = textPosition,
-                Height = options.TextHeight,
-                TextString = FormatStation(station, options.Prefix),
-                Layer = StationLayerName,
-                Color = Color.FromColorIndex(ColorMethod.ByLayer, 256),
-                Rotation = textRotation
-            };
-            modelSpace.AppendEntity(text);
-            tr.AddNewlyCreatedDBObject(text, true);
-            RoadXData.AttachStationLabel(text, axis.Name, RoadXData.RoleText, station);
+                var labelText = FormatStation(relativeStation, options.Prefix, options.ChainageFormat);
+                var estimatedWidth = EstimateTextWidth(labelText, options.TextHeight);
+                var textPosition = tickEnd + sideNormal * (StationTextGapFromTick + estimatedWidth);
+                var text = CreateStationDbText(
+                    labelText,
+                    textPosition,
+                    options.TextHeight,
+                    textColor,
+                    textRotation,
+                    textStyleId,
+                    modelSpace.Database);
+                modelSpace.AppendEntity(text);
+                tr.AddNewlyCreatedDBObject(text, true);
+                RoadXData.AttachStationLabel(text, axis.Name, RoadXData.RoleText, station);
+            }
+            else
+            {
+                // Dva reda (kao na default TCMPOPOSPOZ): "OSA 10" iznad, "0-180.00" ispod,
+                // upravno na osovinu, pored štapića — van polilinije.
+                var namePart = FormatStaAttribute(options.Prefix, stationCounter);
+                var chainagePart = FormatChainage(relativeStation, options.ChainageFormat);
+                var lineSpacing = options.TextHeight * 1.35;
+                var roadDir = direction.Value;
+                if (roadDir.Length > 1e-9)
+                {
+                    roadDir = roadDir.GetNormal();
+                }
+
+                var basePos = tickEnd + sideNormal * (StationTextGapFromTick + options.TextHeight * 0.25);
+                var namePosition = basePos - roadDir * (lineSpacing * 0.5);
+                var chainagePosition = basePos + roadDir * (lineSpacing * 0.5);
+
+                var nameText = CreateStationDbText(
+                    namePart,
+                    namePosition,
+                    options.TextHeight,
+                    textColor,
+                    textRotation,
+                    textStyleId,
+                    modelSpace.Database);
+                modelSpace.AppendEntity(nameText);
+                tr.AddNewlyCreatedDBObject(nameText, true);
+                RoadXData.AttachStationLabel(nameText, axis.Name, RoadXData.RoleText, station);
+
+                var chainageText = CreateStationDbText(
+                    chainagePart,
+                    chainagePosition,
+                    options.TextHeight,
+                    textColor,
+                    textRotation,
+                    textStyleId,
+                    modelSpace.Database);
+                modelSpace.AppendEntity(chainageText);
+                tr.AddNewlyCreatedDBObject(chainageText, true);
+                RoadXData.AttachStationLabel(chainageText, axis.Name, RoadXData.RoleChainage, station);
+            }
 
             count++;
         }
 
         return count;
     }
+
+    public static IReadOnlyList<double> CollectStationsForSync(RoadAxis axis, StationLabelOptions options) =>
+        CollectStationValues(axis, options).OrderBy(static s => s).ToList();
 
     private static IEnumerable<double> CollectStationValues(RoadAxis axis, StationLabelOptions options)
     {
@@ -173,6 +286,12 @@ internal static class RoadDrawing
             stations.Add(RoundStation(end));
         }
 
+        // Uvek ubaci pocetak/kraj lukova (PC/PT) — oznake geometrije krivine.
+        foreach (var boundary in GetArcBoundaryStations(axis))
+        {
+            stations.Add(boundary);
+        }
+
         if (options.LabelAtMainPoints)
         {
             foreach (var element in axis.Elements)
@@ -183,7 +302,126 @@ internal static class RoadDrawing
             stations.Add(RoundStation(axis.Elements[^1].EndStation));
         }
 
-        return stations.Where(s => s >= start - 1e-6 && s <= end + 1e-6);
+        var result = stations
+            .Where(s => s >= start - 1e-6 && s <= end + 1e-6)
+            .OrderBy(static s => s)
+            .ToList();
+        PruneCrowdedNearCurveBoundaries(result, options, GetArcBoundaryStations(axis));
+        PruneCrowdedEndStation(result, options, end);
+        return result;
+    }
+
+    private static HashSet<double> GetArcBoundaryStations(RoadAxis axis)
+    {
+        var boundaries = new HashSet<double>();
+        foreach (var element in axis.Elements)
+        {
+            if (element.Type != AlignmentElementType.Arc || element.Radius < 1e-6)
+            {
+                continue;
+            }
+
+            boundaries.Add(RoundStation(element.StartStation));
+            boundaries.Add(RoundStation(element.EndStation));
+        }
+
+        return boundaries;
+    }
+
+    /// <summary>
+    /// True ako je stacionaza na krivini (ukljucujuci pocetak i kraj luka).
+    /// </summary>
+    private static bool IsStationWithinArc(RoadAxis axis, double station, double tolerance = 1e-3)
+    {
+        foreach (var element in axis.Elements)
+        {
+            if (element.Type != AlignmentElementType.Arc || element.Radius < 1e-6)
+            {
+                continue;
+            }
+
+            if (station >= element.StartStation - tolerance && station <= element.EndStation + tolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsNearStation(IEnumerable<double> stations, double value, double tolerance = 1e-3) =>
+        stations.Any(station => Math.Abs(station - value) <= tolerance);
+
+    /// <summary>
+    /// Ako je intervalna stacionaza bliza PC/PT krivine (manje od interval/2),
+    /// ne crtaj intervalnu — ostaje oznaka pocetka/kraja krivine.
+    /// </summary>
+    private static void PruneCrowdedNearCurveBoundaries(
+        List<double> stations,
+        StationLabelOptions options,
+        IReadOnlyCollection<double> curveBoundaries)
+    {
+        const double tolerance = 1e-3;
+        if (stations.Count < 2 || options.Interval <= 0 || curveBoundaries.Count == 0)
+        {
+            return;
+        }
+
+        var minGap = options.Interval / 2.0;
+        var toRemove = new List<double>();
+        foreach (var station in stations)
+        {
+            if (IsNearStation(curveBoundaries, station, tolerance))
+            {
+                continue;
+            }
+
+            foreach (var boundary in curveBoundaries)
+            {
+                if (Math.Abs(station - boundary) < minGap - tolerance)
+                {
+                    toRemove.Add(station);
+                    break;
+                }
+            }
+        }
+
+        foreach (var station in toRemove)
+        {
+            stations.Remove(station);
+        }
+    }
+
+    /// <summary>
+    /// Ako je krajnja stacionaza blizu predposlednje (manje od interval/2), ne crtaj predposlednju.
+    /// </summary>
+    private static void PruneCrowdedEndStation(List<double> stations, StationLabelOptions options, double end)
+    {
+        const double tolerance = 1e-3;
+        if (!options.LabelAtEnd || stations.Count < 2 || options.Interval <= 0)
+        {
+            return;
+        }
+
+        var last = stations[^1];
+        if (Math.Abs(last - end) > tolerance)
+        {
+            return;
+        }
+
+        var penultimate = stations[^2];
+        var gap = last - penultimate;
+        if (gap >= options.Interval / 2.0 - tolerance)
+        {
+            return;
+        }
+
+        if (options.LabelAtStart && Math.Abs(penultimate - options.StartStation) < tolerance)
+        {
+            return;
+        }
+
+        stations.RemoveAt(stations.Count - 2);
     }
 
     private static double RoundStation(double station) => Math.Round(station, 6);
@@ -281,30 +519,131 @@ internal static class RoadDrawing
                 endDir.Value,
                 element.Radius);
 
+            arcIndex++;
+        }
+
+        return count;
+    }
+
+    public static int DrawSegmentLabels(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        double textHeight,
+        double labelSideSign = DefaultLabelSideSign,
+        short segmentColorIndex = DrawingColorDefaults.SegmentLabel)
+    {
+        EnsureLayer(tr, modelSpace.Database, SegmentLayerName, Color.FromColorIndex(ColorMethod.ByAci, 4));
+        EnsureRegApp(tr, modelSpace.Database);
+
+        var count = 0;
+        for (var i = 0; i < axis.Elements.Count; i++)
+        {
+            var element = axis.Elements[i];
             var midStation = (element.StartStation + element.EndStation) / 2.0;
-            var midDir = axis.GetDirectionAtStation(midStation);
-            if (midDir is null)
+            var point = axis.GetPointAtStation(midStation);
+            var direction = axis.GetDirectionAtStation(midStation);
+            if (point is null || direction is null)
             {
-                arcIndex++;
                 continue;
             }
 
-            var textPosition = GetInnerDimArcMidpoint(element, offset);
+            var labelText = FormatSegmentLabel(element);
+            var rotation = Math.Atan2(direction.Value.Y, direction.Value.X);
+            var position = GetHorizontallyCenteredPosition(point.Value, labelText, textHeight, rotation);
             var text = new DBText
             {
-                Position = textPosition,
+                Position = position,
                 Height = textHeight,
-                TextString = FormatRadius(element.Radius),
-                Layer = RadiusLayerName,
-                Rotation = Math.Atan2(midDir.Value.Y, midDir.Value.X)
+                TextString = labelText,
+                Layer = SegmentLayerName,
+                Color = ToAciColor(segmentColorIndex),
+                Rotation = rotation
             };
             modelSpace.AppendEntity(text);
             tr.AddNewlyCreatedDBObject(text, true);
-            RoadXData.AttachRadiusAnnotation(text, axis.Name, RoadXData.RoleRadiusText, arcIndex, element.Radius);
+            RoadXData.AttachSegmentLabel(text, axis.Name, i);
+            count++;
+        }
+
+        return count;
+    }
+
+    public static int DrawAxisTable(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        Point3d insertionPoint,
+        double textHeight)
+    {
+        EnsureLayer(tr, modelSpace.Database, TableLayerName, Color.FromColorIndex(ColorMethod.ByAci, 7));
+        EnsureRegApp(tr, modelSpace.Database);
+
+        var rows = axis.Elements.Count + 3;
+        var cols = 6;
+        var rowHeight = textHeight * 2.2;
+        var colWidths = new[] { textHeight * 4, textHeight * 8, textHeight * 9, textHeight * 9, textHeight * 8, textHeight * 8 };
+        var width = colWidths.Sum();
+        var height = rows * rowHeight;
+
+        var count = 0;
+        AppendTableLine(tr, modelSpace, insertionPoint, insertionPoint + Vector3d.XAxis * width, axis.Name);
+        count++;
+        for (var row = 1; row <= rows; row++)
+        {
+            var y = -row * rowHeight;
+            AppendTableLine(
+                tr,
+                modelSpace,
+                insertionPoint + Vector3d.YAxis * y,
+                insertionPoint + Vector3d.XAxis * width + Vector3d.YAxis * y,
+                axis.Name);
+            count++;
+        }
+
+        var x = 0.0;
+        for (var col = 0; col <= cols; col++)
+        {
+            AppendTableLine(
+                tr,
+                modelSpace,
+                insertionPoint + Vector3d.XAxis * x,
+                insertionPoint + Vector3d.XAxis * x - Vector3d.YAxis * height,
+                axis.Name);
             count++;
 
-            arcIndex++;
+            if (col < cols)
+            {
+                x += colWidths[col];
+            }
         }
+
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 0, 0, $"OSOVINA {axis.Name}", textHeight, axis.Name, 2);
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 0, 1, "Br.", textHeight, axis.Name);
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 1, 1, "Tip", textHeight, axis.Name);
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 2, 1, "STA od", textHeight, axis.Name);
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 3, 1, "STA do", textHeight, axis.Name);
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 4, 1, "L [m]", textHeight, axis.Name);
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 5, 1, "R [m]", textHeight, axis.Name);
+        count += 7;
+
+        for (var i = 0; i < axis.Elements.Count; i++)
+        {
+            var element = axis.Elements[i];
+            var row = i + 2;
+            AppendTableText(tr, modelSpace, insertionPoint, colWidths, 0, row, (i + 1).ToString(), textHeight, axis.Name);
+            AppendTableText(tr, modelSpace, insertionPoint, colWidths, 1, row, element.Type == AlignmentElementType.Tangent ? "Pravac" : "Luk", textHeight, axis.Name);
+            AppendTableText(tr, modelSpace, insertionPoint, colWidths, 2, row, FormatStation(element.StartStation, string.Empty), textHeight, axis.Name);
+            AppendTableText(tr, modelSpace, insertionPoint, colWidths, 3, row, FormatStation(element.EndStation, string.Empty), textHeight, axis.Name);
+            AppendTableText(tr, modelSpace, insertionPoint, colWidths, 4, row, element.Length.ToString("F2"), textHeight, axis.Name);
+            AppendTableText(tr, modelSpace, insertionPoint, colWidths, 5, row, element.Type == AlignmentElementType.Arc ? element.Radius.ToString("F2") : "-", textHeight, axis.Name);
+            count += 6;
+        }
+
+        var totalRow = axis.Elements.Count + 2;
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 1, totalRow, "Ukupno", textHeight, axis.Name);
+        AppendTableText(tr, modelSpace, insertionPoint, colWidths, 4, totalRow, axis.TotalLength.ToString("F2"), textHeight, axis.Name);
+        count += 2;
 
         return count;
     }
@@ -314,12 +653,27 @@ internal static class RoadDrawing
         Database db,
         RoadAxis axis,
         StationLabelOptions options,
-        double curveRadius)
+        double curveRadius,
+        ObjectId sourcePolylineId = default,
+        double polylineStartDistance = 0,
+        double polylineEndDistance = 0)
     {
+        long sourceHandle = 0;
+        double polylineReferenceLength = 0;
+        if (!sourcePolylineId.IsNull)
+        {
+            var source = (DBObject)tr.GetObject(sourcePolylineId, OpenMode.ForRead);
+            sourceHandle = source.Handle.Value;
+            if (source is Polyline polyline)
+            {
+                polylineReferenceLength = polyline.Length;
+            }
+        }
+
         RoadAxisStore.Save(tr, db, new RoadAxisMetadata
         {
             Name = axis.Name,
-            StartStation = axis.StartStation,
+            StartStation = options.StartStation,
             EndStation = options.EndStation,
             Interval = options.Interval,
             TickLength = options.TickLength,
@@ -332,9 +686,24 @@ internal static class RoadDrawing
             AlignToStart = options.AlignToStart,
             LabelAtStart = options.LabelAtStart,
             LabelAtEnd = options.LabelAtEnd,
-            LabelAtMainPoints = options.LabelAtMainPoints
+            LabelAtMainPoints = options.LabelAtMainPoints,
+            SourcePolylineHandle = sourceHandle,
+            PolylineStartDistance = polylineStartDistance,
+            PolylineEndDistance = polylineEndDistance,
+            PolylineReferenceLength = polylineReferenceLength,
+            AxisCounterStart = options.AxisCounterStart,
+            LabelFormat = options.LabelFormat,
+            ChainageFormat = options.ChainageFormat,
+            DrawSegmentLabels = options.DrawSegmentLabels,
+            AxisColorIndex = options.AxisColorIndex,
+            StationTextColorIndex = options.StationTextColorIndex,
+            StationTickColorIndex = options.StationTickColorIndex,
+            SegmentLabelColorIndex = options.SegmentLabelColorIndex
         });
     }
+
+    private static Color ToAciColor(short aci) =>
+        Color.FromColorIndex(ColorMethod.ByAci, aci);
 
     public static void SaveAxisMetadata(
         Transaction tr,
@@ -362,19 +731,63 @@ internal static class RoadDrawing
                 TickLength = tickLength,
                 TextHeight = textHeight,
                 Prefix = prefix,
-                LabelSideSign = labelSideSign
+                LabelSideSign = labelSideSign,
+                AxisCounterStart = 1,
+                LabelFormat = StationLabelFormat.ProjectCounter
             },
             curveRadius);
 
+    private static DBText CreateStationDbText(
+        string contents,
+        Point3d alignmentPoint,
+        double height,
+        Color color,
+        double rotation,
+        ObjectId textStyleId,
+        Database db)
+    {
+        var text = new DBText
+        {
+            Height = height,
+            TextString = contents,
+            Layer = StationLayerName,
+            Color = color,
+            Rotation = rotation,
+            TextStyleId = textStyleId,
+            HorizontalMode = TextHorizontalMode.TextCenter,
+            VerticalMode = TextVerticalMode.TextVerticalMid
+        };
+        text.AlignmentPoint = alignmentPoint;
+        text.AdjustAlignment(db);
+        return text;
+    }
+
     private static Vector3d GetSideNormal(Vector3d direction, double labelSideSign)
     {
+        if (Math.Abs(labelSideSign) < 1e-9)
+        {
+            labelSideSign = DefaultLabelSideSign;
+        }
+
+        // Leva normala u odnosu na smer rasta stacionaze (desna za labelSideSign < 0).
         var leftNormal = new Vector3d(-direction.Y, direction.X, 0);
         if (leftNormal.Length < 1e-9)
         {
-            return Vector3d.YAxis * labelSideSign;
+            return Vector3d.YAxis * Math.Sign(labelSideSign);
         }
 
-        return leftNormal.GetNormal() * labelSideSign;
+        return leftNormal.GetNormal() * Math.Sign(labelSideSign);
+    }
+
+    private static double GetPerpendicularLabelRotation(Vector3d direction, double labelSideSign)
+    {
+        if (Math.Abs(labelSideSign) < 1e-9)
+        {
+            labelSideSign = DefaultLabelSideSign;
+        }
+
+        // Upravno na osovinu, orijentacija u smeru crtanja polilinije (rast stacionaze).
+        return Math.Atan2(direction.Y, direction.X) - Math.PI / 2.0 * Math.Sign(labelSideSign);
     }
 
     private static Line CreateLine(AlignmentElement element) =>
@@ -392,7 +805,7 @@ internal static class RoadDrawing
             : new Arc(element.Center, element.Radius, startAngle, endAngle);
     }
 
-    private static void EnsureRegApp(Transaction tr, Database db)
+    internal static void EnsureRegApp(Transaction tr, Database db)
     {
         var regTable = (RegAppTable)tr.GetObject(db.RegAppTableId, OpenMode.ForRead);
         if (regTable.Has(RegAppName))
@@ -424,30 +837,135 @@ internal static class RoadDrawing
         tr.AddNewlyCreatedDBObject(layer, true);
     }
 
-    public static string FormatStation(double station, string prefix)
+    private static void PrepareAxisLayer(Transaction tr, Database db)
     {
-        var kilometers = (int)Math.Floor(station / 1000.0);
-        var meters = station - kilometers * 1000.0;
-        var labelPrefix = string.IsNullOrWhiteSpace(prefix) ? "STA" : prefix.Trim();
-        return $"{labelPrefix} {kilometers}+{meters:000.00}";
+        EnsureLayer(tr, db, AxisLayerName, Color.FromColorIndex(ColorMethod.ByAci, 1));
     }
 
-    private static double GetReadableTextRotation(Vector3d sideNormal)
+    private static void UnlockAxisLayer(Transaction tr, Database db)
     {
-        var rotation = Math.Atan2(sideNormal.Y, sideNormal.X);
-        if (rotation > Math.PI / 2.0)
+        var layerTable = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+        var layer = (LayerTableRecord)tr.GetObject(layerTable[AxisLayerName], OpenMode.ForWrite);
+        layer.IsLocked = false;
+    }
+
+    private static void LockAxisLayer(Transaction tr, Database db)
+    {
+        var layerTable = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+        if (!layerTable.Has(AxisLayerName))
         {
-            rotation -= Math.PI;
-        }
-        else if (rotation < -Math.PI / 2.0)
-        {
-            rotation += Math.PI;
+            return;
         }
 
-        return rotation;
+        var layer = (LayerTableRecord)tr.GetObject(layerTable[AxisLayerName], OpenMode.ForWrite);
+        layer.IsLocked = true;
     }
+
+    private static void PlaceAxisBelowSourcePolyline(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        ObjectIdCollection axisIds,
+        ObjectId sourcePolylineId)
+    {
+        if (axisIds.Count == 0 || sourcePolylineId.IsNull || modelSpace.DrawOrderTableId.IsNull)
+        {
+            return;
+        }
+
+        var drawOrder = (DrawOrderTable)tr.GetObject(modelSpace.DrawOrderTableId, OpenMode.ForWrite);
+        drawOrder.MoveBelow(axisIds, sourcePolylineId);
+    }
+
+    public static string FormatStaAttribute(string prefix, int stationCounter)
+    {
+        var labelPrefix = prefix?.Trim() ?? string.Empty;
+        return string.IsNullOrEmpty(labelPrefix)
+            ? stationCounter.ToString()
+            : $"{labelPrefix} {stationCounter}";
+    }
+
+    public static string FormatStation(double station, string prefix, int chainageFormat = ChainageFormatter.DefaultFormat)
+    {
+        var chainage = FormatChainage(station, chainageFormat);
+        var labelPrefix = prefix?.Trim() ?? string.Empty;
+        return string.IsNullOrEmpty(labelPrefix) ? chainage : $"{labelPrefix} {chainage}";
+    }
+
+    public static string FormatProjectStation(double station, string prefix, int stationCounter, int chainageFormat = ChainageFormatter.DefaultFormat) =>
+        $"{FormatStaAttribute(prefix, stationCounter)} {FormatChainage(station, chainageFormat)}";
+
+    private static string FormatChainage(double station, int chainageFormat = ChainageFormatter.DefaultFormat) =>
+        ChainageFormatter.Format(station, chainageFormat);
 
     public static string FormatRadius(double radius) => $"R={radius:F2}";
+
+    private static string FormatSegmentLabel(AlignmentElement element)
+    {
+        return element.Type == AlignmentElementType.Arc
+            ? $"L={element.Length:F2} R={element.Radius:F2}"
+            : $"L={element.Length:F2}";
+    }
+
+    public static double EstimateTextWidth(string text, double height)
+    {
+        return height * text.Length * 0.55;
+    }
+
+    private static Point3d GetHorizontallyCenteredPosition(
+        Point3d center,
+        string text,
+        double height,
+        double rotation)
+    {
+        var width = EstimateTextWidth(text, height);
+        var textDir = new Vector3d(Math.Cos(rotation), Math.Sin(rotation), 0);
+        return center - textDir * (width * 0.5);
+    }
+
+    private static void AppendTableLine(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        Point3d start,
+        Point3d end,
+        string axisName)
+    {
+        var line = new Line(start, end)
+        {
+            Layer = TableLayerName,
+            Color = Color.FromColorIndex(ColorMethod.ByLayer, 256)
+        };
+        modelSpace.AppendEntity(line);
+        tr.AddNewlyCreatedDBObject(line, true);
+        RoadXData.AttachAxisTable(line, axisName);
+    }
+
+    private static void AppendTableText(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        Point3d insertionPoint,
+        double[] colWidths,
+        int col,
+        int row,
+        string value,
+        double textHeight,
+        string axisName,
+        int colSpan = 1)
+    {
+        var x = colWidths.Take(col).Sum() + textHeight * 0.4;
+        var y = -(row + 0.7) * textHeight * 2.2;
+        var text = new DBText
+        {
+            Position = insertionPoint + Vector3d.XAxis * x + Vector3d.YAxis * y,
+            Height = textHeight,
+            TextString = value,
+            Layer = TableLayerName,
+            Color = Color.FromColorIndex(ColorMethod.ByLayer, 256),
+            Rotation = 0
+        };
+        modelSpace.AppendEntity(text);
+        tr.AddNewlyCreatedDBObject(text, true);
+        RoadXData.AttachAxisTable(text, axisName);
+    }
 
     private static Point3d? TryGetIntersectionPoint(RoadAxis axis, int arcIndex)
     {

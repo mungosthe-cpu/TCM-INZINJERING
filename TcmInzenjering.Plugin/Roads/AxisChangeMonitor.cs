@@ -6,8 +6,13 @@ namespace TcmInzenjering.Plugin.Roads;
 
 internal static class AxisChangeMonitor
 {
-    private static readonly HashSet<string> DirtyAxes = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> PolylineDirtyAxes = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> AxisGeometryDirtyAxes = new(StringComparer.OrdinalIgnoreCase);
     private static bool _idleHooked;
+    private static int _suppressModifiedDepth;
+
+    private static string[] PendingPolylineAxes = Array.Empty<string>();
+    private static string[] PendingAxisGeometryAxes = Array.Empty<string>();
 
     public static void Initialize()
     {
@@ -34,75 +39,100 @@ internal static class AxisChangeMonitor
 
     private static void AttachDocument(Document doc)
     {
+        DetachDocument(doc);
         doc.Database.ObjectModified += OnObjectModified;
         doc.CommandEnded += OnCommandEnded;
+        doc.CommandCancelled += OnCommandEnded;
+        doc.CommandFailed += OnCommandEnded;
+        SeedAxisReferences(doc);
     }
 
     private static void DetachDocument(Document doc)
     {
         doc.Database.ObjectModified -= OnObjectModified;
         doc.CommandEnded -= OnCommandEnded;
+        doc.CommandCancelled -= OnCommandEnded;
+        doc.CommandFailed -= OnCommandEnded;
     }
 
     private static void OnObjectModified(object sender, ObjectEventArgs e)
     {
-        if (e.DBObject is not Entity entity || !RoadXData.TryReadAxisElement(entity, out var axisName, out _))
+        if (_suppressModifiedDepth > 0)
         {
             return;
         }
 
-        lock (DirtyAxes)
+        if (e.DBObject is not Entity entity)
         {
-            DirtyAxes.Add(axisName);
+            return;
         }
+
+        if (RoadXData.TryReadSourcePolyline(entity, out var sourceAxisName))
+        {
+            lock (PolylineDirtyAxes)
+            {
+                PolylineDirtyAxes.Add(sourceAxisName);
+            }
+
+            EnsureIdleHooked();
+            return;
+        }
+
+        if (!RoadXData.TryReadAxisElement(entity, out var axisName, out _))
+        {
+            return;
+        }
+
+        lock (AxisGeometryDirtyAxes)
+        {
+            AxisGeometryDirtyAxes.Add(axisName);
+        }
+
+        EnsureIdleHooked();
     }
 
     private static void OnCommandEnded(object sender, CommandEventArgs e)
     {
         if (IsOwnCommand(e.GlobalCommandName))
         {
-            lock (DirtyAxes)
+            lock (PolylineDirtyAxes)
             {
-                DirtyAxes.Clear();
+                PolylineDirtyAxes.Clear();
             }
 
+            lock (AxisGeometryDirtyAxes)
+            {
+                AxisGeometryDirtyAxes.Clear();
+            }
+
+            PendingPolylineAxes = Array.Empty<string>();
+            PendingAxisGeometryAxes = Array.Empty<string>();
             return;
         }
 
-        string[] axesToUpdate;
-        lock (DirtyAxes)
-        {
-            if (DirtyAxes.Count == 0)
-            {
-                return;
-            }
-
-            axesToUpdate = DirtyAxes.ToArray();
-            DirtyAxes.Clear();
-        }
-
-        if (!_idleHooked)
-        {
-            _idleHooked = true;
-            AcApp.Idle += OnIdleUpdate;
-        }
-
-        PendingAxes = axesToUpdate;
+        DrainDirtyAxesToPending();
+        EnsureIdleHooked();
     }
 
-    private static string[] PendingAxes = Array.Empty<string>();
+    private static string[] MergeAxisNames(string[] existing, string[] incoming) =>
+        existing
+            .Concat(incoming)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private static void OnIdleUpdate(object? sender, EventArgs e)
     {
-        if (PendingAxes.Length == 0)
+        DrainDirtyAxesToPending();
+        if (PendingPolylineAxes.Length == 0 && PendingAxisGeometryAxes.Length == 0)
         {
             _idleHooked = false;
             AcApp.Idle -= OnIdleUpdate;
             return;
         }
 
-        var axes = PendingAxes;
-        PendingAxes = Array.Empty<string>();
+        var dirtyAxes = MergeAxisNames(PendingPolylineAxes, PendingAxisGeometryAxes);
+        PendingPolylineAxes = Array.Empty<string>();
+        PendingAxisGeometryAxes = Array.Empty<string>();
         _idleHooked = false;
         AcApp.Idle -= OnIdleUpdate;
 
@@ -114,12 +144,20 @@ internal static class AxisChangeMonitor
 
         try
         {
+            _suppressModifiedDepth++;
             using var docLock = doc.LockDocument();
             using var tr = doc.Database.TransactionManager.StartTransaction();
             var updated = 0;
-            foreach (var axisName in axes)
+            foreach (var axisName in dirtyAxes)
             {
-                updated += StationLabelService.RefreshAxis(tr, doc.Database, axisName);
+                var metadata = RoadAxisStore.Load(tr, doc.Database, axisName);
+                if (metadata?.HasSourcePolyline == true)
+                {
+                    updated += StationLabelService.RefreshAxisFromPolyline(tr, doc.Database, axisName);
+                    continue;
+                }
+
+                updated += StationLabelService.RefreshAxisGeometry(tr, doc.Database, axisName);
             }
 
             tr.Commit();
@@ -133,10 +171,79 @@ internal static class AxisChangeMonitor
         {
             doc.Editor.WriteMessage($"\nTCM-INZINJERING: greska pri azuriranju stacionaza - {ex.Message}");
         }
+        finally
+        {
+            _suppressModifiedDepth--;
+        }
     }
 
     private static bool IsOwnCommand(string commandName)
     {
         return commandName.StartsWith("TCM", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void DrainDirtyAxesToPending()
+    {
+        string[] polylineAxes;
+        string[] axisGeometryAxes;
+        lock (PolylineDirtyAxes)
+        lock (AxisGeometryDirtyAxes)
+        {
+            if (PolylineDirtyAxes.Count == 0 && AxisGeometryDirtyAxes.Count == 0)
+            {
+                return;
+            }
+
+            polylineAxes = PolylineDirtyAxes.ToArray();
+            axisGeometryAxes = AxisGeometryDirtyAxes.ToArray();
+            PolylineDirtyAxes.Clear();
+            AxisGeometryDirtyAxes.Clear();
+        }
+
+        PendingPolylineAxes = MergeAxisNames(PendingPolylineAxes, polylineAxes);
+        PendingAxisGeometryAxes = MergeAxisNames(PendingAxisGeometryAxes, axisGeometryAxes);
+    }
+
+    private static void EnsureIdleHooked()
+    {
+        if (_idleHooked)
+        {
+            return;
+        }
+
+        _idleHooked = true;
+        AcApp.Idle += OnIdleUpdate;
+    }
+
+    private static void SeedAxisReferences(Document doc)
+    {
+        try
+        {
+            using var docLock = doc.LockDocument();
+            using var tr = doc.Database.TransactionManager.StartTransaction();
+            RoadDrawing.EnsureAxisLayerPickThrough(tr, doc.Database);
+            foreach (var axisName in RoadAxisStore.GetAxisNames(tr, doc.Database))
+            {
+                var metadata = RoadAxisStore.Load(tr, doc.Database, axisName);
+                if (metadata is null)
+                {
+                    continue;
+                }
+
+                var axis = AxisGeometryReader.ReadAxis(tr, doc.Database, axisName, metadata.StartStation);
+                if (axis is null || axis.Elements.Count == 0)
+                {
+                    continue;
+                }
+
+                AxisReferenceTracker.Update(axisName, axis.Elements[0].Start);
+            }
+
+            tr.Commit();
+        }
+        catch
+        {
+            // Dokument moze biti jos u fazi ucitavanja.
+        }
     }
 }
