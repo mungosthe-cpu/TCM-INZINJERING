@@ -11,6 +11,12 @@ internal static class RoadDrawing
     public const string RadiusLayerName = "TCM_RADIJUS";
     public const string SegmentLayerName = "TCM_SEGMENT";
     public const string TableLayerName = "TCM_TABELA";
+    public const string TangentNodeLayerName = "TCM_CVOR";
+    public const string SourcePolylineLayerName = "TCM_TANG_POLIGON";
+    public const string ProjectedAxisLayerName = "TCM_OSOVINA_3D";
+    public const string DashedLinetypeName = "DASHED";
+    /// <summary>Odmak od čvora (PI) do bliže ivice tabele duž bisektrise ugla tangenti (kao na referentnom crtežu).</summary>
+    public const double DefaultTangentNodeTableOffset = 25.0;
     public const string RegAppName = "TCM_INZINJERING";
     public const double DefaultLabelSideSign = 1.0; // +1 = leva strana u smeru rasta stacionaze
     public const double DefaultTickLength = 15.0;
@@ -63,6 +69,7 @@ internal static class RoadDrawing
         EnsureLayer(tr, modelSpace.Database, RadiusLayerName, Color.FromColorIndex(ColorMethod.ByAci, 2));
         EnsureLayer(tr, modelSpace.Database, SegmentLayerName, Color.FromColorIndex(ColorMethod.ByAci, 4));
         EnsureLayer(tr, modelSpace.Database, TableLayerName, Color.FromColorIndex(ColorMethod.ByAci, 7));
+        EnsureLayer(tr, modelSpace.Database, TangentNodeLayerName, Color.FromColorIndex(ColorMethod.ByAci, 7));
         EnsureRegApp(tr, modelSpace.Database);
 
         var ids = new ObjectIdCollection();
@@ -144,9 +151,12 @@ internal static class RoadDrawing
                 continue;
             }
 
-            // Leva strana polilinije gledano u smeru rasta stacionaze (LabelSideSign = -1 -> desna).
-            var sideNormal = GetSideNormal(direction.Value, options.LabelSideSign);
-            var halfTick = options.TickLength / 2.0;
+            // Levo/desno od osovine u smeru rasta stacionaze (nezavisno od strane ispisa oznaka).
+            var leftNormal = GetSideNormal(direction.Value, 1.0);
+            var labelSideNormal = GetSideNormal(direction.Value, options.LabelSideSign);
+            StationFontPreferences.Load();
+            var leftLength = StationFontPreferences.CrossAxisLeftLength;
+            var rightLength = StationFontPreferences.CrossAxisRightLength;
             // Unutar krivine (PC..PT): ista boja kao oznaka radijusa L/R.
             var onCurve = IsStationWithinArc(axis, station);
             var markColor = onCurve
@@ -156,9 +166,12 @@ internal static class RoadDrawing
                 ? ToAciColor(options.SegmentLabelColorIndex)
                 : ToAciColor(options.StationTextColorIndex);
 
-            // Tick je centriran na osi; tickEnd je na strani oznake (levo).
-            var tickStart = point.Value - sideNormal * halfTick;
-            var tickEnd = point.Value + sideNormal * halfTick;
+            // Tick: levo = +leftNormal, desno = -leftNormal.
+            var tickStart = point.Value - leftNormal * rightLength;
+            var tickEnd = point.Value + leftNormal * leftLength;
+            // Anker za tekst na strani oznake.
+            var textTickEnd = options.LabelSideSign >= 0 ? tickEnd : tickStart;
+            var textSideNormal = labelSideNormal;
 
             var tick = new Line(tickStart, tickEnd)
             {
@@ -177,7 +190,7 @@ internal static class RoadDrawing
             {
                 var labelText = FormatStation(relativeStation, options.Prefix, options.ChainageFormat);
                 var estimatedWidth = EstimateTextWidth(labelText, options.TextHeight);
-                var textPosition = tickEnd + sideNormal * (StationTextGapFromTick + estimatedWidth);
+                var textPosition = textTickEnd + textSideNormal * (StationTextGapFromTick + estimatedWidth);
                 var text = CreateStationDbText(
                     labelText,
                     textPosition,
@@ -203,7 +216,7 @@ internal static class RoadDrawing
                     roadDir = roadDir.GetNormal();
                 }
 
-                var basePos = tickEnd + sideNormal * (StationTextGapFromTick + options.TextHeight * 0.25);
+                var basePos = textTickEnd + textSideNormal * (StationTextGapFromTick + options.TextHeight * 0.25);
                 var namePosition = basePos - roadDir * (lineSpacing * 0.5);
                 var chainagePosition = basePos + roadDir * (lineSpacing * 0.5);
 
@@ -569,6 +582,197 @@ internal static class RoadDrawing
         return count;
     }
 
+    /// <summary>
+    /// Na svakom preseku tangenti (čvor T1, T2…) crta marker, oznaku i dinamičku tabelu parametara.
+    /// </summary>
+    public static int DrawTangentNodeTables(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        double textHeight)
+    {
+        EnsureLayer(tr, modelSpace.Database, TangentNodeLayerName, Color.FromColorIndex(ColorMethod.ByAci, 7));
+        EnsureRegApp(tr, modelSpace.Database);
+
+        var nodes = TangentNodeGeometry.Collect(axis);
+        if (nodes.Count == 0)
+        {
+            return 0;
+        }
+
+        var height = Math.Max(0.5, textHeight);
+        var count = 0;
+        foreach (var node in nodes)
+        {
+            count += DrawSingleTangentNode(tr, modelSpace, axis.Name, node, height);
+        }
+
+        return count;
+    }
+
+    private static int DrawSingleTangentNode(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        string axisName,
+        TangentNodeInfo node,
+        double textHeight)
+    {
+        var count = 0;
+        var yellow = Color.FromColorIndex(ColorMethod.ByAci, 2);
+        var blue = Color.FromColorIndex(ColorMethod.ByAci, 5);
+
+        var bisector = node.OpenBisector;
+        if (bisector.Length < 1e-9)
+        {
+            bisector = Vector3d.YAxis;
+        }
+        else
+        {
+            bisector = bisector.GetNormal();
+        }
+
+        // Lokalna osa tabele: "desno" = čitljiv smer teksta, "gore" = smer narednog reda (CCW od desno).
+        var right = new Vector3d(-bisector.Y, bisector.X, 0).GetNormal();
+        if (Math.Cos(Math.Atan2(right.Y, right.X)) < 0)
+        {
+            right = right.Negate();
+        }
+
+        var textUp = new Vector3d(-right.Y, right.X, 0).GetNormal();
+        var textRotation = Math.Atan2(right.Y, right.X);
+
+        // Žuti marker na PI.
+        var markerRadius = textHeight * 0.35;
+        var circle = new Circle(node.Pi, Vector3d.ZAxis, markerRadius)
+        {
+            Layer = TangentNodeLayerName,
+            Color = yellow
+        };
+        modelSpace.AppendEntity(circle);
+        tr.AddNewlyCreatedDBObject(circle, true);
+        RoadXData.AttachTangentNode(circle, axisName, node.Number);
+        count++;
+
+        // Oznaka T1, T2… pored čvora (ne rotirana).
+        var label = new DBText
+        {
+            Position = node.Pi + bisector * (textHeight * 0.9) + right * (textHeight * 1.2),
+            Height = textHeight * 1.4,
+            TextString = $"T{node.Number}",
+            Layer = TangentNodeLayerName,
+            Color = blue,
+            Rotation = 0
+        };
+        modelSpace.AppendEntity(label);
+        tr.AddNewlyCreatedDBObject(label, true);
+        RoadXData.AttachTangentNode(label, axisName, node.Number);
+        count++;
+
+        var lines = BuildTangentNodeTableLines(node);
+        var lineHeight = textHeight * 1.15;
+        var padding = textHeight * 0.45;
+        var maxWidth = 0.0;
+        foreach (var line in lines)
+        {
+            maxWidth = Math.Max(maxWidth, EstimateTextWidth(line, textHeight));
+        }
+
+        var boxWidth = maxWidth + padding * 2;
+        var boxHeight = lines.Count * lineHeight + padding * 2;
+        var halfW = boxWidth / 2.0;
+        var halfH = boxHeight / 2.0;
+
+        // Rotirana tabela: bliža ivica na odmaku 25 duž bisektrise (ka čvoru).
+        var boxCenter = node.Pi + bisector * (DefaultTangentNodeTableOffset + halfH);
+        var nearLeft = boxCenter - right * halfW - bisector * halfH;
+        var nearRight = boxCenter + right * halfW - bisector * halfH;
+        var farRight = boxCenter + right * halfW + bisector * halfH;
+        var farLeft = boxCenter - right * halfW + bisector * halfH;
+
+        var frame = new Polyline();
+        frame.AddVertexAt(0, new Point2d(nearLeft.X, nearLeft.Y), 0, 0, 0);
+        frame.AddVertexAt(1, new Point2d(nearRight.X, nearRight.Y), 0, 0, 0);
+        frame.AddVertexAt(2, new Point2d(farRight.X, farRight.Y), 0, 0, 0);
+        frame.AddVertexAt(3, new Point2d(farLeft.X, farLeft.Y), 0, 0, 0);
+        frame.Closed = true;
+        frame.Layer = TangentNodeLayerName;
+        frame.Color = Color.FromColorIndex(ColorMethod.ByAci, 7);
+        modelSpace.AppendEntity(frame);
+        tr.AddNewlyCreatedDBObject(frame, true);
+        RoadXData.AttachTangentNode(frame, axisName, node.Number);
+        count++;
+
+        var leaderAnchor = node.Pi + bisector * DefaultTangentNodeTableOffset;
+        var leader = new Line(node.Pi, leaderAnchor)
+        {
+            Layer = TangentNodeLayerName,
+            Color = Color.FromColorIndex(ColorMethod.ByAci, 7)
+        };
+        modelSpace.AppendEntity(leader);
+        tr.AddNewlyCreatedDBObject(leader, true);
+        RoadXData.AttachTangentNode(leader, axisName, node.Number);
+        count++;
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            // Prvi red (T=) uvek na "vrhu" teksta u smeru čitanja (textUp), ne nužno dalje od čvora.
+            var localY = halfH - padding - (i + 0.75) * lineHeight;
+            var localX = -halfW + padding;
+            var textPos = boxCenter + right * localX + textUp * localY;
+            var cell = new DBText
+            {
+                Position = textPos,
+                Height = textHeight,
+                TextString = lines[i],
+                Layer = TangentNodeLayerName,
+                Color = Color.FromColorIndex(ColorMethod.ByAci, 7),
+                Rotation = textRotation
+            };
+            modelSpace.AppendEntity(cell);
+            tr.AddNewlyCreatedDBObject(cell, true);
+            RoadXData.AttachTangentNode(cell, axisName, node.Number);
+            count++;
+        }
+
+        return count;
+    }
+
+    private static IReadOnlyList<string> BuildTangentNodeTableLines(TangentNodeInfo node) =>
+    [
+        $"T= {node.Number}",
+        $"x= {node.Pi.X:0.000}",
+        $"y= {node.Pi.Y:0.000}",
+        $"α= {FormatDegreesMinutesSeconds(node.DeflectionRadians)}",
+        $"R= {node.Radius:0.000}",
+        $"dl= {node.ArcLength:0.000}",
+        $"dk= {node.ArcLength:0.000}",
+        $"T1= {node.TangentLength1:0.000}",
+        $"T2= {node.TangentLength2:0.000}",
+        $"b= {node.ExternalDistance:0.000}"
+    ];
+
+    private static string FormatDegreesMinutesSeconds(double radians)
+    {
+        var degrees = Math.Abs(radians) * 180.0 / Math.PI;
+        var d = (int)Math.Floor(degrees);
+        var minutesFull = (degrees - d) * 60.0;
+        var m = (int)Math.Floor(minutesFull);
+        var s = (minutesFull - m) * 60.0;
+        if (s >= 59.95)
+        {
+            s = 0;
+            m++;
+        }
+
+        if (m >= 60)
+        {
+            m = 0;
+            d++;
+        }
+
+        return $"{d}°{m}'{s:0.0}\"";
+    }
+
     public static int DrawAxisTable(
         Transaction tr,
         BlockTableRecord modelSpace,
@@ -821,9 +1025,31 @@ internal static class RoadDrawing
 
     private static void EnsureLayer(Transaction tr, Database db, string layerName, Color color)
     {
+        EnsureLayer(tr, db, layerName, color, linetypeName: null);
+    }
+
+    private static void EnsureLayer(
+        Transaction tr,
+        Database db,
+        string layerName,
+        Color color,
+        string? linetypeName)
+    {
         var layerTable = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
         if (layerTable.Has(layerName))
         {
+            if (string.IsNullOrWhiteSpace(linetypeName))
+            {
+                return;
+            }
+
+            var existing = (LayerTableRecord)tr.GetObject(layerTable[layerName], OpenMode.ForWrite);
+            if (TryGetLinetypeId(tr, db, linetypeName, out var existingLtId) &&
+                existing.LinetypeObjectId != existingLtId)
+            {
+                existing.LinetypeObjectId = existingLtId;
+            }
+
             return;
         }
 
@@ -833,8 +1059,253 @@ internal static class RoadDrawing
             Name = layerName,
             Color = color
         };
+        if (!string.IsNullOrWhiteSpace(linetypeName) &&
+            TryGetLinetypeId(tr, db, linetypeName, out var ltId))
+        {
+            layer.LinetypeObjectId = ltId;
+        }
+
         layerTable.Add(layer);
         tr.AddNewlyCreatedDBObject(layer, true);
+    }
+
+    /// <summary>
+    /// Izvorna polilinija (tangentni poligon): sloj TCM_TANG_POLIGON + isprekidana (DASHED) linija.
+    /// </summary>
+    public static void StyleSourcePolyline(Transaction tr, Database db, Entity polyline)
+    {
+        EnsureDashedLinetype(tr, db);
+        EnsureLayer(
+            tr,
+            db,
+            SourcePolylineLayerName,
+            Color.FromColorIndex(ColorMethod.ByAci, 8),
+            DashedLinetypeName);
+
+        if (!polyline.IsWriteEnabled)
+        {
+            polyline.UpgradeOpen();
+        }
+
+        polyline.Layer = SourcePolylineLayerName;
+        if (TryGetLinetypeId(tr, db, DashedLinetypeName, out _))
+        {
+            polyline.Linetype = DashedLinetypeName;
+            polyline.LinetypeScale = 10.0;
+        }
+
+        // Tangenta uvek iznad ose / 3D projekcije radi pick-a i pomeranja.
+        BringEntityToFront(tr, db, polyline.ObjectId);
+    }
+
+    /// <summary>
+    /// Izvorna tangenta (SRCPL) ide na vrh draw order-a — klik bira nju, ne osovinu/3D poly.
+    /// </summary>
+    public static void EnsureTangentOnTop(Transaction tr, Database db, string axisName)
+    {
+        var metadata = RoadAxisStore.Load(tr, db, axisName);
+        if (metadata is null ||
+            !metadata.HasSourcePolyline ||
+            !AxisPolylineResolver.TryResolve(db, metadata.SourcePolylineHandle, out var polylineId))
+        {
+            return;
+        }
+
+        BringEntityToFront(tr, db, polylineId);
+    }
+
+    public static void BringEntityToFront(Transaction tr, Database db, ObjectId entityId)
+    {
+        if (entityId.IsNull || entityId.IsErased)
+        {
+            return;
+        }
+
+        var modelSpace = (BlockTableRecord)tr.GetObject(
+            SymbolUtilityServices.GetBlockModelSpaceId(db),
+            OpenMode.ForRead);
+        if (modelSpace.DrawOrderTableId.IsNull)
+        {
+            return;
+        }
+
+        try
+        {
+            var drawOrder = (DrawOrderTable)tr.GetObject(modelSpace.DrawOrderTableId, OpenMode.ForWrite);
+            drawOrder.MoveToTop(new ObjectIdCollection { entityId });
+        }
+        catch
+        {
+            // Draw order nije kritičan ako objekat nije u model space.
+        }
+    }
+
+    /// <summary>
+    /// Crta 3D poliliniju — projekciju ose na teren (XY na plan-osi, Z sa terena).
+    /// Sloj ostaje zaključan da se kroz njega bira / pomera izvorna tangenta.
+    /// </summary>
+    public static ObjectId DrawProjectedAxis(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        string axisName,
+        IReadOnlyList<Point3d> points)
+    {
+        EnsureRegApp(tr, modelSpace.Database);
+        EnsureProjectedAxisLayer(tr, modelSpace.Database);
+        UnlockProjectedAxisLayer(tr, modelSpace.Database);
+
+        if (points.Count < 2)
+        {
+            LockProjectedAxisLayer(tr, modelSpace.Database);
+            return ObjectId.Null;
+        }
+
+        ObjectId id;
+        try
+        {
+            var poly = new Polyline3d();
+            poly.SetDatabaseDefaults(modelSpace.Database);
+            poly.Layer = ProjectedAxisLayerName;
+            poly.Color = Color.FromColorIndex(ColorMethod.ByAci, 6);
+            modelSpace.AppendEntity(poly);
+            tr.AddNewlyCreatedDBObject(poly, true);
+
+            foreach (var point in points)
+            {
+                var vertex = new PolylineVertex3d(point);
+                poly.AppendVertex(vertex);
+                tr.AddNewlyCreatedDBObject(vertex, true);
+            }
+
+            RoadXData.AttachProjectedAxis(poly, axisName);
+            id = poly.ObjectId;
+        }
+        finally
+        {
+            LockProjectedAxisLayer(tr, modelSpace.Database);
+        }
+
+        return id;
+    }
+
+    public static void EnsureProjectedAxisLayerPickThrough(Transaction tr, Database db)
+    {
+        EnsureProjectedAxisLayer(tr, db);
+        LockProjectedAxisLayer(tr, db);
+    }
+
+    public static void RunWithUnlockedProjectedAxisLayer(Transaction tr, Database db, Action action)
+    {
+        EnsureProjectedAxisLayer(tr, db);
+        UnlockProjectedAxisLayer(tr, db);
+        try
+        {
+            action();
+        }
+        finally
+        {
+            LockProjectedAxisLayer(tr, db);
+        }
+    }
+
+    /// <summary>
+    /// Posle crtanja 3D projekcije: tangenta ostaje na vrhu draw order-a.
+    /// </summary>
+    public static void SendProjectedAxisBelowPickables(
+        Transaction tr,
+        Database db,
+        ObjectId projectedId,
+        string axisName)
+    {
+        if (!projectedId.IsNull && !projectedId.IsErased)
+        {
+            var modelSpace = (BlockTableRecord)tr.GetObject(
+                SymbolUtilityServices.GetBlockModelSpaceId(db),
+                OpenMode.ForRead);
+            if (!modelSpace.DrawOrderTableId.IsNull)
+            {
+                try
+                {
+                    var drawOrder = (DrawOrderTable)tr.GetObject(modelSpace.DrawOrderTableId, OpenMode.ForWrite);
+                    drawOrder.MoveToBottom(new ObjectIdCollection { projectedId });
+                }
+                catch
+                {
+                    // Ignoriši.
+                }
+            }
+        }
+
+        EnsureTangentOnTop(tr, db, axisName);
+    }
+
+    private static void EnsureProjectedAxisLayer(Transaction tr, Database db)
+    {
+        EnsureLayer(tr, db, ProjectedAxisLayerName, Color.FromColorIndex(ColorMethod.ByAci, 6));
+    }
+
+    private static void UnlockProjectedAxisLayer(Transaction tr, Database db)
+    {
+        var layerTable = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+        if (!layerTable.Has(ProjectedAxisLayerName))
+        {
+            return;
+        }
+
+        var layer = (LayerTableRecord)tr.GetObject(layerTable[ProjectedAxisLayerName], OpenMode.ForWrite);
+        layer.IsLocked = false;
+    }
+
+    private static void LockProjectedAxisLayer(Transaction tr, Database db)
+    {
+        var layerTable = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+        if (!layerTable.Has(ProjectedAxisLayerName))
+        {
+            return;
+        }
+
+        var layer = (LayerTableRecord)tr.GetObject(layerTable[ProjectedAxisLayerName], OpenMode.ForWrite);
+        layer.IsLocked = true;
+    }
+
+    private static void EnsureDashedLinetype(Transaction tr, Database db)
+    {
+        var table = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
+        if (table.Has(DashedLinetypeName))
+        {
+            return;
+        }
+
+        foreach (var file in new[] { "acad.lin", "acadiso.lin" })
+        {
+            try
+            {
+                db.LoadLineTypeFile(DashedLinetypeName, file);
+                table = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
+                if (table.Has(DashedLinetypeName))
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                // Probaj sledeći .lin fajl.
+            }
+        }
+    }
+
+    private static bool TryGetLinetypeId(Transaction tr, Database db, string linetypeName, out ObjectId linetypeId)
+    {
+        linetypeId = ObjectId.Null;
+        EnsureDashedLinetype(tr, db);
+        var table = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
+        if (!table.Has(linetypeName))
+        {
+            return false;
+        }
+
+        linetypeId = table[linetypeName];
+        return true;
     }
 
     private static void PrepareAxisLayer(Transaction tr, Database db)

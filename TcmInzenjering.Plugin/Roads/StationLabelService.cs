@@ -1,5 +1,6 @@
 using Autodesk.AutoCAD.DatabaseServices;
 using TcmInzenjering.Plugin.Roads.CrossAxis;
+using TcmInzenjering.Plugin.Roads.Terrain;
 
 namespace TcmInzenjering.Plugin.Roads;
 
@@ -42,6 +43,8 @@ internal static class StationLabelService
 
         var count = RefreshLabels(tr, db, axisName, metadata);
         UpdateAxisReference(tr, db, axisName, metadata.StartStation);
+        count += TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
+        RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
         return count;
     }
 
@@ -88,6 +91,7 @@ internal static class StationLabelService
         DeleteCrossAnnotations(tr, db, axisName);
         DeleteRadiusLabels(tr, db, axisName);
         DeleteSegmentLabels(tr, db, axisName);
+        DeleteTangentNodeTables(tr, db, axisName);
 
         var modelSpace = (BlockTableRecord)tr.GetObject(
             SymbolUtilityServices.GetBlockModelSpaceId(db),
@@ -95,6 +99,7 @@ internal static class StationLabelService
 
         var stationCount = 0;
         var segmentCount = 0;
+        var nodeCount = 0;
         RoadDrawing.RunWithUnlockedAxisLayer(tr, db, () =>
         {
             DeleteAxisEntities(tr, db, axisName);
@@ -109,11 +114,14 @@ internal static class StationLabelService
                     metadata.LabelSideSign,
                     stationOptions.SegmentLabelColorIndex)
                 : 0;
+            nodeCount = RoadDrawing.DrawTangentNodeTables(tr, modelSpace, visibleAxis, metadata.TextHeight);
         });
 
         CrossAxisLayoutService.SyncToRoadAxis(tr, db, axisName, visibleAxis, stationOptions);
         var polylineForWrite = (Polyline)tr.GetObject(polylineId, OpenMode.ForWrite);
         RoadXData.AttachSourcePolyline(polylineForWrite, axisName);
+        RoadDrawing.StyleSourcePolyline(tr, db, polylineForWrite);
+        RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
 
         var polylineStart = metadata.PolylineStartDistance;
         var polylineEnd = metadata.PolylineEndDistance;
@@ -154,7 +162,9 @@ internal static class StationLabelService
         });
 
         UpdateAxisReference(tr, db, axisName, stationOptions.StartStation);
-        return stationCount + segmentCount;
+        var projected = TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
+        RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
+        return stationCount + segmentCount + nodeCount + projected;
     }
 
     private static int RefreshLabels(Transaction tr, Database db, string axisName, RoadAxisMetadata metadata)
@@ -171,6 +181,7 @@ internal static class StationLabelService
         DeleteCrossAnnotations(tr, db, axisName);
         DeleteRadiusLabels(tr, db, axisName);
         DeleteSegmentLabels(tr, db, axisName);
+        DeleteTangentNodeTables(tr, db, axisName);
         var modelSpace = (BlockTableRecord)tr.GetObject(
             SymbolUtilityServices.GetBlockModelSpaceId(db),
             OpenMode.ForWrite);
@@ -191,9 +202,11 @@ internal static class StationLabelService
                 metadata.SegmentLabelColorIndex)
             : 0;
 
+        var nodeCount = RoadDrawing.DrawTangentNodeTables(tr, modelSpace, axis, metadata.TextHeight);
+
         CrossAxisLayoutService.SyncToRoadAxis(tr, db, axisName, axis, metadata.ToLabelOptions());
 
-        return stationCount + segmentCount;
+        return stationCount + segmentCount + nodeCount;
     }
 
     private static void UpdateAxisReference(
@@ -362,6 +375,43 @@ internal static class StationLabelService
         {
             var entity = (Entity)tr.GetObject(id, OpenMode.ForWrite);
             entity.Erase();
+        }
+    }
+
+    public static void DeleteTangentNodeTables(Transaction tr, Database db, string axisName)
+    {
+        var modelSpace = (BlockTableRecord)tr.GetObject(
+            SymbolUtilityServices.GetBlockModelSpaceId(db),
+            OpenMode.ForWrite);
+
+        var toErase = new List<ObjectId>();
+        foreach (ObjectId id in modelSpace)
+        {
+            if (id.IsErased)
+            {
+                continue;
+            }
+
+            var entity = (Entity)tr.GetObject(id, OpenMode.ForRead);
+            if (entity.Layer != RoadDrawing.TangentNodeLayerName ||
+                !RoadXData.TryReadTangentNode(entity, out var name, out _))
+            {
+                continue;
+            }
+
+            if (string.Equals(name, axisName, StringComparison.OrdinalIgnoreCase))
+            {
+                toErase.Add(id);
+            }
+        }
+
+        foreach (var id in toErase)
+        {
+            var entity = (Entity)tr.GetObject(id, OpenMode.ForWrite);
+            if (!entity.IsErased)
+            {
+                entity.Erase();
+            }
         }
     }
 }

@@ -102,9 +102,11 @@
     <Page Remove="Dialogs\Plo2TanDialog.xaml" />
     <Page Remove="Dialogs\ChainageFormatDialog.xaml" />
     <Page Remove="Dialogs\CrossAxisSettingsDialog.xaml" />
+    <Page Remove="Dialogs\TerrainProjectionDialog.xaml" />
     <Compile Remove="Dialogs\Plo2TanDialog.xaml.cs" />
     <Compile Remove="Dialogs\ChainageFormatDialog.xaml.cs" />
     <Compile Remove="Dialogs\CrossAxisSettingsDialog.xaml.cs" />
+    <Compile Remove="Dialogs\TerrainProjectionDialog.xaml.cs" />
     <Compile Remove="Dialogs\AciColorHelper.cs" />
     <Compile Remove="Dialogs\Plo2TanDialogPreferences.cs" />
     <Compile Remove="Dialogs\Plo2TanDialogState.cs" />

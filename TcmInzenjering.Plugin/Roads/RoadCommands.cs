@@ -8,7 +8,7 @@ using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace TcmInzenjering.Plugin.Roads;
 
-public sealed class RoadCommands
+public sealed partial class RoadCommands
 {
     [CommandMethod("TCMPLO2TAN", CommandFlags.Modal)]
     public void PolylineToTangentPolygon()
@@ -64,6 +64,7 @@ public sealed class RoadCommands
                     stationOptions.LabelSideSign,
                     stationOptions.SegmentLabelColorIndex)
                 : 0;
+            var nodeCount = RoadDrawing.DrawTangentNodeTables(tr, modelSpace, axis, textHeight);
             if (axis.Elements.Count > 0)
             {
                 AxisReferenceTracker.Update(axis.Name, axis.Elements[0].Start);
@@ -71,10 +72,11 @@ public sealed class RoadCommands
 
             var polylineForLink = (Polyline)tr.GetObject(polylineId, OpenMode.ForWrite);
             RoadXData.AttachSourcePolyline(polylineForLink, axisName);
+            RoadDrawing.StyleSourcePolyline(tr, db, polylineForLink);
             RoadDrawing.SaveAxisMetadata(tr, db, axis, stationOptions, curveRadius, polylineId);
             tr.Commit();
 
-            PrintAxisReport(ed, axis, labelCount, radiusCount, segmentCount);
+            PrintAxisReport(ed, axis, labelCount, radiusCount, segmentCount, nodeCount);
 #else
             var dialogState = new Plo2TanDialogState
             {
@@ -153,6 +155,7 @@ public sealed class RoadCommands
                 StationLabelService.DeleteCrossAnnotations(tr, db, dialog.AxisName);
                 StationLabelService.DeleteSegmentLabels(tr, db, dialog.AxisName);
                 StationLabelService.DeleteRadiusLabels(tr, db, dialog.AxisName);
+                StationLabelService.DeleteTangentNodeTables(tr, db, dialog.AxisName);
                 StationLabelService.DeleteAxisEntities(tr, db, dialog.AxisName);
             });
 
@@ -168,6 +171,7 @@ public sealed class RoadCommands
                     stationOptions.LabelSideSign,
                     stationOptions.SegmentLabelColorIndex)
                 : 0;
+            var nodeCount = RoadDrawing.DrawTangentNodeTables(tr, modelSpace, visibleAxis, dialog.TextHeight);
             if (visibleAxis.Elements.Count > 0)
             {
                 AxisReferenceTracker.Update(dialog.AxisName, visibleAxis.Elements[0].Start);
@@ -175,6 +179,7 @@ public sealed class RoadCommands
 
             var polylineForLink = (Polyline)tr.GetObject(polylineId, OpenMode.ForWrite);
             RoadXData.AttachSourcePolyline(polylineForLink, dialog.AxisName);
+            RoadDrawing.StyleSourcePolyline(tr, db, polylineForLink);
             RoadDrawing.SaveAxisMetadata(
                 tr,
                 db,
@@ -188,7 +193,7 @@ public sealed class RoadCommands
 
             ed.WriteMessage(
                 $"\n  Interval crtanja osovine: {stationOptions.StartStation:F2} m - {stationOptions.EndStation:F2} m (odabrano na polyliniji: {dialog.StartStation:F2} - {dialog.EndStation:F2} m)");
-            PrintAxisReport(ed, visibleAxis, labelCount, radiusCount, segmentCount);
+            PrintAxisReport(ed, visibleAxis, labelCount, radiusCount, segmentCount, nodeCount);
 #endif
         }
         catch (Autodesk.AutoCAD.Runtime.Exception acEx)
@@ -435,7 +440,13 @@ public sealed class RoadCommands
         string prefix) =>
         RoadDrawing.DrawStationLabels(tr, modelSpace, axis, interval, tickLength, textHeight, prefix);
 
-    private static void PrintAxisReport(Editor ed, RoadAxis axis, int labelCount, int radiusCount = 0, int segmentCount = 0)
+    private static void PrintAxisReport(
+        Editor ed,
+        RoadAxis axis,
+        int labelCount,
+        int radiusCount = 0,
+        int segmentCount = 0,
+        int nodeCount = 0)
     {
         ed.WriteMessage($"\nTCM-INZINJERING: Osovina '{axis.Name}' kreirana.");
         ed.WriteMessage($"\n  Pocetna stacionaza : {RoadDrawing.FormatStation(axis.StartStation, string.Empty)}");
@@ -465,6 +476,11 @@ public sealed class RoadCommands
         if (segmentCount > 0)
         {
             ed.WriteMessage($"\n  Iscrtano oznaka segmenata: {segmentCount}");
+        }
+
+        if (nodeCount > 0)
+        {
+            ed.WriteMessage($"\n  Iscrtano tabela cvorova (T1…): {nodeCount}");
         }
     }
 }

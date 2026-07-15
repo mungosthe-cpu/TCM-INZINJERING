@@ -140,36 +140,63 @@ $url = [string]$meta.DownloadUrl
 $notes = [string]$meta.ReleaseNotes
 $setup = [string]$meta.SetupPath
 
-# --- Progress window ---
+# --- Progress window (logo umesto crnog ekrana) ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = $title
-$form.Size = New-Object System.Drawing.Size(520, 180)
+$form.Size = New-Object System.Drawing.Size(720, 420)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
 $form.TopMost = $true
 $form.ShowInTaskbar = $true
+$form.BackColor = [System.Drawing.Color]::FromArgb(12, 28, 56)
+
+$logoPaths = @(
+  (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\TcmInzenjering.bundle\Contents\net8\Icons\TCM Logo.png"),
+  (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\TcmInzenjering.bundle\Contents\net48\Icons\TCM Logo.png"),
+  (Join-Path $PSScriptRoot "TCM Logo.png")
+)
+$pic = New-Object System.Windows.Forms.PictureBox
+$pic.Dock = "Top"
+$pic.Height = 260
+$pic.SizeMode = "Zoom"
+$pic.BackColor = $form.BackColor
+foreach ($lp in $logoPaths) {
+  if (Test-Path -LiteralPath $lp) {
+    try {
+      $fs = [System.IO.File]::OpenRead($lp)
+      $pic.Image = [System.Drawing.Image]::FromStream($fs)
+      $fs.Close()
+      break
+    } catch { }
+  }
+}
 
 $label = New-Object System.Windows.Forms.Label
-$label.Location = New-Object System.Drawing.Point(16, 14)
-$label.Size = New-Object System.Drawing.Size(470, 36)
+$label.Dock = "Top"
+$label.Height = 36
+$label.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 0)
+$label.ForeColor = [System.Drawing.Color]::White
 $label.Text = "Preuzimanje TCM-INZINJERING v$version..."
 
 $bar = New-Object System.Windows.Forms.ProgressBar
-$bar.Location = New-Object System.Drawing.Point(16, 60)
-$bar.Size = New-Object System.Drawing.Size(470, 26)
+$bar.Dock = "Top"
+$bar.Height = 26
+$bar.Margin = New-Object System.Windows.Forms.Padding(16)
 $bar.Minimum = 0
 $bar.Maximum = 100
 $bar.Style = "Continuous"
 $bar.Value = 0
 
 $status = New-Object System.Windows.Forms.Label
-$status.Location = New-Object System.Drawing.Point(16, 100)
-$status.Size = New-Object System.Drawing.Size(470, 24)
+$status.Dock = "Top"
+$status.Height = 28
+$status.Padding = New-Object System.Windows.Forms.Padding(16, 6, 16, 0)
+$status.ForeColor = [System.Drawing.Color]::FromArgb(176, 212, 232)
 $status.Text = "Povezivanje..."
 
-$form.Controls.AddRange(@($label, $bar, $status))
+$form.Controls.AddRange(@($status, $bar, $label, $pic))
 $form.Show()
 $form.Refresh()
 [System.Windows.Forms.Application]::DoEvents()

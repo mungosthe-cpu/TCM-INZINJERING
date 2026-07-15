@@ -109,6 +109,18 @@ $bricsSource = Join-Path $root "TcmInzenjering.BricsCAD.bundle"
 Copy-Item $bundleSource (Join-Path $payloadDir "TcmInzenjering.bundle") -Recurse -Force
 Copy-Item $bricsSource (Join-Path $payloadDir "TcmInzenjering.BricsCAD.bundle") -Recurse -Force
 
+$logoSrc = Join-Path $root "ICONS\TCM Logo.png"
+if (Test-Path $logoSrc) {
+    foreach ($dir in @(
+        (Join-Path $payloadDir "TcmInzenjering.bundle\Contents\net8\Icons"),
+        (Join-Path $payloadDir "TcmInzenjering.bundle\Contents\net48\Icons"),
+        (Join-Path $payloadDir "TcmInzenjering.BricsCAD.bundle\Contents\net48\Icons")
+    )) {
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        Copy-Item $logoSrc (Join-Path $dir "TCM Logo.png") -Force
+    }
+}
+
 $acadLegacyDll = Join-Path $payloadDir "TcmInzenjering.bundle\Contents\net48\TcmInzenjering.Plugin.Legacy.dll"
 if (-not (Test-Path $acadLegacyDll)) {
     throw "AutoCAD Legacy DLL nije u payload-u: $acadLegacyDll"
@@ -138,7 +150,12 @@ Copy-Item $payloadDir $setupPayloadDir -Recurse -Force
 dotnet publish $setupProject -c $Configuration -r win-x64 --self-contained true /p:Version=$Version /p:PublishSingleFile=true
 if ($LASTEXITCODE -ne 0) { throw "Publish instalera nije uspeo." }
 
-$publishedSetup = Join-Path $root "TcmInzenjering.Setup\bin\$Configuration\net8.0\win-x64\publish\TCM-INZINJERING-Setup.exe"
+$publishedSetup = Join-Path $root "TcmInzenjering.Setup\bin\$Configuration\net8.0-windows\win-x64\publish\TCM-INZINJERING-Setup.exe"
+if (-not (Test-Path $publishedSetup)) {
+    # Starija putanja (pre WinForms / net8.0-windows).
+    $legacyPublish = Join-Path $root "TcmInzenjering.Setup\bin\$Configuration\net8.0\win-x64\publish\TCM-INZINJERING-Setup.exe"
+    if (Test-Path $legacyPublish) { $publishedSetup = $legacyPublish }
+}
 if (-not (Test-Path $publishedSetup)) {
     throw "Installer EXE nije pronadjen: $publishedSetup"
 }

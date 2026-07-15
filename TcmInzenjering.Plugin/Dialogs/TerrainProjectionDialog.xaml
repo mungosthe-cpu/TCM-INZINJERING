@@ -1,0 +1,103 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.TerrainProjectionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Projekcija na teren"
+        Height="360"
+        Width="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Projekcija 3D polilinije na teren"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Margin="0,0,0,10"/>
+
+        <TextBlock Grid.Row="1"
+                   x:Name="InfoText"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,12"
+                   Foreground="#333333"/>
+
+        <StackPanel Grid.Row="2">
+            <GroupBox Header="Vrsta projekcije" Padding="10,8,10,10" Margin="0,0,0,10">
+                <StackPanel>
+                    <RadioButton x:Name="FixedCountRadio"
+                                 GroupName="ProjectionMode"
+                                 IsChecked="True"
+                                 Margin="0,0,0,8"
+                                 Content="Broj tačaka 3D polilinije (preciznost)"/>
+
+                    <RadioButton x:Name="EdgeCrossingsRadio"
+                                 GroupName="ProjectionMode"
+                                 Margin="0,0,0,4">
+                        <TextBlock TextWrapping="Wrap">
+                            <Run Text="Preseci sa 3DFACE / TIN ivicama + preciznost"/>
+                            <LineBreak/>
+                            <Run x:Name="EdgeDetailRun"
+                                 FontSize="11"
+                                 Foreground="#555555"
+                                 Text="(broj preseka)"/>
+                        </TextBlock>
+                    </RadioButton>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="Preciznost 3D polilinije" Padding="10,8,10,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Broj tačaka:"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
+                    <TextBox x:Name="PointCountBox"
+                             Grid.Column="1"
+                             Height="24"
+                             VerticalContentAlignment="Center"/>
+                    <TextBlock Grid.Column="2"
+                               Text="(uključujući krajeve; veći broj = bolje prati lukove)"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="8,0,0,0"
+                               Foreground="#666666"
+                               FontSize="11"/>
+                </Grid>
+            </GroupBox>
+
+            <TextBlock Margin="0,10,0,0"
+                       TextWrapping="Wrap"
+                       FontSize="11"
+                       Foreground="#555555"
+                       Text="Rezultat je 3D polilinija (XY na plan-osi, Z sa terena)."/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <Button Content="OK"
+                    Width="88"
+                    Height="28"
+                    Margin="0,0,8,0"
+                    IsDefault="True"
+                    Click="OnOk"/>
+            <Button Content="Otkaži"
+                    Width="88"
+                    Height="28"
+                    IsCancel="True"
+                    Click="OnCancel"/>
+        </StackPanel>
+    </Grid>
+</Window>

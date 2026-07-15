@@ -17,6 +17,10 @@ internal static class RoadXData
     public const string RoleSourcePolyline = "SRCPL";
     public const string RoleSegmentText = "SEGT";
     public const string RoleTable = "TABL";
+    /// <summary>Čvor tangentnog poligona (T1, T2…) — marker, oznaka, tabela, leader.</summary>
+    public const string RoleTangentNode = "TNODE";
+    /// <summary>3D polilinija — projekcija ose na teren.</summary>
+    public const string RoleProjectedAxis = "PROJ";
 
     public static void AttachSourcePolyline(Entity entity, string axisName)
     {
@@ -74,6 +78,42 @@ internal static class RoadXData
             new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleTable),
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName)));
+    }
+
+    public static void AttachTangentNode(Entity entity, string axisName, int nodeNumber)
+    {
+        SetXData(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleTangentNode),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName),
+            new TypedValue((int)DxfCode.ExtendedDataInteger16, (short)nodeNumber)));
+    }
+
+    public static void AttachProjectedAxis(Entity entity, string axisName)
+    {
+        SetXData(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleProjectedAxis),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName)));
+    }
+
+    public static bool TryReadProjectedAxis(Entity entity, out string axisName)
+    {
+        axisName = string.Empty;
+        var values = entity.GetXDataForApplication(RoadDrawing.RegAppName);
+        if (values is null)
+        {
+            return false;
+        }
+
+        var items = values.AsArray();
+        if (items.Length < 3 || items[1].Value?.ToString() != RoleProjectedAxis)
+        {
+            return false;
+        }
+
+        axisName = items[2].Value?.ToString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(axisName);
     }
 
     public static bool TryReadSourcePolyline(Entity entity, out string axisName)
@@ -190,6 +230,27 @@ internal static class RoadXData
 
         axisName = items[2].Value?.ToString() ?? string.Empty;
         return !string.IsNullOrWhiteSpace(axisName);
+    }
+
+    public static bool TryReadTangentNode(Entity entity, out string axisName, out int nodeNumber)
+    {
+        axisName = string.Empty;
+        nodeNumber = 0;
+        var values = entity.GetXDataForApplication(RoadDrawing.RegAppName);
+        if (values is null)
+        {
+            return false;
+        }
+
+        var items = values.AsArray();
+        if (items.Length < 4 || items[1].Value?.ToString() != RoleTangentNode)
+        {
+            return false;
+        }
+
+        axisName = items[2].Value?.ToString() ?? string.Empty;
+        nodeNumber = Convert.ToInt32(items[3].Value);
+        return !string.IsNullOrWhiteSpace(axisName) && nodeNumber > 0;
     }
 
     public static bool IsManagedEntity(Entity entity)

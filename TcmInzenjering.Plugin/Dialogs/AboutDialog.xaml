@@ -2,80 +2,102 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Info o programu"
-        Height="380"
-        Width="440"
+        Height="540"
+        Width="900"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
-        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-    <Grid Margin="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        Background="#0A1A35">
+    <Grid ClipToBounds="True">
+        <!-- Cela slika u prozoru — bez posebne trake ispod -->
+        <Image x:Name="LogoImage"
+               Stretch="UniformToFill"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               SnapsToDevicePixels="True"/>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock Text="TCM-INZINJERING"
-                       FontSize="22"
-                       FontWeight="Bold"/>
-            <TextBlock x:Name="VersionText"
-                       FontSize="13"
-                       Foreground="Gray"
-                       Margin="0,2,0,0"/>
-            <TextBlock Text="AutoCAD/BricsCAD plugin za puteve i osovinsku geometriju"
-                       FontSize="12"
-                       Margin="0,4,0,0"
-                       TextWrapping="Wrap"/>
-        </StackPanel>
+        <!-- Tekst preko donjeg (plavog) dela same slike -->
+        <Grid Margin="28,0,28,58" VerticalAlignment="Bottom">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="20"/>
+                <ColumnDefinition Width="250"/>
+            </Grid.ColumnDefinitions>
 
-        <Separator Grid.Row="1" Margin="0,0,0,12"/>
-
-        <GroupBox Grid.Row="2" Header="Autor" Padding="12,10,12,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="90"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Ime:" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="AuthorText" Margin="0,0,0,8"/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Telefon:" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="PhoneText" Margin="0,0,0,8"/>
-
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="E-mail:" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,8">
-                    <Hyperlink x:Name="EmailLink" Click="OnEmailClick">
-                        <TextBlock x:Name="EmailText"/>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="TCM-INŽINJERING"
+                           Foreground="White"
+                           FontSize="20"
+                           FontWeight="Bold">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock x:Name="VersionText"
+                           Foreground="White"
+                           FontSize="12"
+                           Margin="0,2,0,8">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock Text="AutoCAD / BricsCAD plugin za osovinsku geometriju, stacionaže, poprečne ose i projekciju na teren."
+                           Foreground="White"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           MaxWidth="460">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock Margin="0,10,0,2"
+                           Foreground="White"
+                           FontSize="12">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                    <Hyperlink x:Name="GitHubLink" Click="OnGitHubClick" Foreground="White" TextDecorations="Underline">
+                        Preuzimanje najnovije verzije (GitHub Releases)
                     </Hyperlink>
                 </TextBlock>
+            </StackPanel>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Facebook:" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,0,0,8">
-                    <Hyperlink x:Name="FacebookLink" Click="OnFacebookClick">
-                        <TextBlock Text="Dragan Todorović (Ruma)"/>
+            <StackPanel Grid.Column="2">
+                <TextBlock Text="Autor"
+                           Foreground="White"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,6">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock x:Name="AuthorText" Foreground="White" Margin="0,0,0,4">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock x:Name="PhoneText" Foreground="White" Margin="0,0,0,4">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                </TextBlock>
+                <TextBlock>
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                    </TextBlock.Effect>
+                    <Hyperlink x:Name="EmailLink" Click="OnEmailClick" Foreground="White" TextDecorations="Underline">
+                        <TextBlock x:Name="EmailText" Foreground="White"/>
                     </Hyperlink>
                 </TextBlock>
+            </StackPanel>
+        </Grid>
 
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="GitHub:" FontWeight="SemiBold"/>
-                <TextBlock Grid.Row="4" Grid.Column="1">
-                    <Hyperlink x:Name="GitHubLink" Click="OnGitHubClick">
-                        <TextBlock Text="Preuzimanje najnovije verzije"/>
-                    </Hyperlink>
-                </TextBlock>
-            </Grid>
-        </GroupBox>
-
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+        <!-- Dugmad preko plavog dela slike (bez crne/plave trake) -->
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,16,12">
             <Button Content="Proveri nadogradnju"
                     Width="150"
                     Height="28"

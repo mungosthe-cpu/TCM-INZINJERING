@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Windows.Forms;
 
 namespace TcmInzenjering.Setup;
 
@@ -8,74 +9,95 @@ internal static class Program
     private const string BricsBundleFolderName = "TcmInzenjering.BricsCAD.bundle";
     private const string AppName = "TcmInzenjering";
 
+    [STAThread]
     private static int Main(string[] args)
     {
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
-        Console.WriteLine("========================================");
-        Console.WriteLine(" TCM-INZINJERING - instalacija");
-        Console.WriteLine($" Verzija: {GetInstallerVersion()}");
-        Console.WriteLine("========================================");
-        Console.WriteLine();
+        ApplicationConfiguration.Initialize();
+        var silent = args.Any(a => string.Equals(a, "--silent", StringComparison.OrdinalIgnoreCase));
+
+        using var form = new InstallerForm();
+        if (!silent)
+        {
+            form.Show();
+            Application.DoEvents();
+        }
 
         try
         {
+            form.SetStatus($"TCM-INŽINJERING v{GetInstallerVersion()} — priprema…");
+            form.SetProgress(5);
+
             var sourceRoot = ResolvePayloadRoot();
             var autocadBundle = Path.Combine(sourceRoot, BundleFolderName);
             var bricsBundle = Path.Combine(sourceRoot, BricsBundleFolderName);
 
             if (!Directory.Exists(autocadBundle))
             {
-                throw new DirectoryNotFoundException($"Nije pronadjen paket: {autocadBundle}");
+                throw new DirectoryNotFoundException($"Nije pronađen paket: {autocadBundle}");
             }
 
             var targets = HostDetector.DetectTargets();
-            if (targets.Count == 0)
-            {
-                Console.WriteLine("Upozorenje: nije pronadjen AutoCAD (2020+) ni BricsCAD (2022+).");
-                Console.WriteLine("Instalacija ce kopirati bundle u standardne ApplicationPlugins foldere.");
-            }
-            else
-            {
-                Console.WriteLine("Pronadjeni CAD hostovi:");
-                foreach (var target in targets)
-                {
-                    Console.WriteLine($"  - {target.DisplayName} ({target.Kind}, {target.Series})");
-                }
-            }
+            form.SetStatus(
+                targets.Count == 0
+                    ? "CAD host nije detektovan — biće korišćeni standardni ApplicationPlugins folderi."
+                    : $"Pronađeno {targets.Count} CAD hostova. Kopiranje…");
+            form.SetProgress(20);
 
-            Console.WriteLine();
-            InstallBundle(autocadBundle, GetAutocadInstallTargets());
+            InstallBundle(autocadBundle, GetAutocadInstallTargets(), form, 20, 55);
+            form.SetProgress(55);
+
             if (Directory.Exists(bricsBundle))
             {
-                InstallBundle(bricsBundle, GetBricsInstallTargets());
+                InstallBundle(bricsBundle, GetBricsInstallTargets(), form, 55, 75);
             }
             else
             {
-                InstallBundle(autocadBundle, GetBricsInstallTargets());
+                InstallBundle(autocadBundle, GetBricsInstallTargets(), form, 55, 75);
             }
 
+            form.SetStatus("Registrovanje u AutoCAD / BricsCAD profilima…");
+            form.SetProgress(80);
             RegisterAutocadProfiles(targets.Where(t => t.Kind == CadHostKind.AutoCAD));
             RegisterBricsCadProfiles(targets.Where(t => t.Kind == CadHostKind.BricsCAD));
-            Console.WriteLine();
-            Console.WriteLine("Instalacija zavrsena.");
-            Console.WriteLine("Restartujte AutoCAD/BricsCAD. Komanda za proveru nadogradnje: TCMUPDATE");
-            PauseIfInteractive(args);
+            form.SetProgress(100);
+
+            var okMsg =
+                "Instalacija završena. Restartujte AutoCAD/BricsCAD.\n" +
+                "Komanda za proveru: TCMUPDATE";
+
+            if (silent)
+            {
+                return 0;
+            }
+
+            form.Complete(true, okMsg);
+            Application.Run(form);
             return 0;
         }
         catch (Exception ex)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"Greska: {ex.Message}");
-            Console.ResetColor();
-            PauseIfInteractive(args);
+            if (silent)
+            {
+                return 1;
+            }
+
+            form.Complete(false, $"Greška: {ex.Message}");
+            Application.Run(form);
             return 1;
         }
     }
 
-    private static void InstallBundle(string bundleSource, IEnumerable<string> targets)
+    private static void InstallBundle(
+        string bundleSource,
+        IEnumerable<string> targets,
+        InstallerForm form,
+        int progressFrom,
+        int progressTo)
     {
-        foreach (var targetRoot in targets.Distinct(StringComparer.OrdinalIgnoreCase))
+        var list = targets.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        for (var i = 0; i < list.Count; i++)
         {
+            var targetRoot = list[i];
             try
             {
                 var parent = Path.GetDirectoryName(targetRoot);
@@ -90,11 +112,17 @@ internal static class Program
                 }
 
                 CopyDirectory(bundleSource, targetRoot);
-                Console.WriteLine($"Kopirano u: {targetRoot}");
+                form.SetStatus($"Kopirano: {targetRoot}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Preskoceno: {targetRoot} ({ex.Message})");
+                form.SetStatus($"Preskočeno: {targetRoot} ({ex.Message})");
+            }
+
+            if (list.Count > 0)
+            {
+                var t = (i + 1) / (double)list.Count;
+                form.SetProgress(progressFrom + (int)((progressTo - progressFrom) * t));
             }
         }
     }
@@ -117,11 +145,10 @@ internal static class Program
             try
             {
                 RegistryInstaller.RegisterAutocadApplication(target.Series, target.ProductCode, dllPath);
-                Console.WriteLine($"Registry: {target.Series}\\{target.ProductCode}\\Applications\\{AppName}");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Registry preskocen ({target.ProductCode}): {ex.Message}");
+                // Preskoči individualni profil.
             }
         }
     }
@@ -132,7 +159,6 @@ internal static class Program
         var dllPath = Path.Combine(bundleRoot, "Contents", "net48", "TcmInzenjering.Plugin.Legacy.dll");
         if (!File.Exists(dllPath))
         {
-            Console.WriteLine($"Upozorenje: BricsCAD DLL nije pronadjen ({dllPath}). Plugin nece raditi u BricsCAD-u.");
             return;
         }
 
@@ -141,11 +167,10 @@ internal static class Program
             try
             {
                 RegistryInstaller.RegisterBricsCadApplication(target.Series, target.ProductCode, dllPath);
-                Console.WriteLine($"Registry: {target.Series}\\{target.ProductCode}\\Applications\\{AppName}");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Registry preskocen ({target.ProductCode}): {ex.Message}");
+                // Preskoči.
             }
         }
     }
@@ -176,7 +201,6 @@ internal static class Program
 
     private static string ResolvePayloadRoot()
     {
-        // Single-file publish (IncludeAllContentForSelfExtract) extracts payload into BaseDirectory.
         var exeDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var candidates = new[]
         {
@@ -197,7 +221,7 @@ internal static class Program
             }
         }
 
-        throw new DirectoryNotFoundException("Nije pronadjen folder sa bundle paketom (payload/TcmInzenjering.bundle).");
+        throw new DirectoryNotFoundException("Nije pronađen folder sa bundle paketom (payload/TcmInzenjering.bundle).");
     }
 
     private static void CopyDirectory(string source, string destination)
@@ -216,20 +240,6 @@ internal static class Program
         }
     }
 
-    private static string GetInstallerVersion()
-    {
-        return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.1.0";
-    }
-
-    private static void PauseIfInteractive(string[] args)
-    {
-        if (args.Any(a => string.Equals(a, "--silent", StringComparison.OrdinalIgnoreCase)))
-        {
-            return;
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("Pritisnite Enter za izlaz...");
-        Console.ReadLine();
-    }
+    private static string GetInstallerVersion() =>
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.1.0";
 }

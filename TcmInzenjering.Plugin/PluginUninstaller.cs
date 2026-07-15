@@ -75,11 +75,7 @@ internal static class PluginUninstaller
                 return;
             }
 
-            var tab = ribbon.FindTab(Ribbon.RibbonBuilder.TabId);
-            if (tab is not null)
-            {
-                ribbon.Tabs.Remove(tab);
-            }
+            Ribbon.RibbonBuilder.RemoveAllTcmTabs();
         }
         catch
         {

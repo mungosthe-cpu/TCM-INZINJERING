@@ -30,6 +30,9 @@ public sealed class CrossAxisCommandService
 #if NET8_0_OR_GREATER
     private static CrossAxisPlacementSettings? _pendingSettings;
     private static IReadOnlyList<long>? _pendingSelection;
+    private static bool? _pendingLengthsEnabled;
+    private static double? _pendingLeftLength;
+    private static double? _pendingRightLength;
 
     private static void RunDialogLoop(Document doc)
     {
@@ -69,10 +72,24 @@ public sealed class CrossAxisCommandService
 
             // null = selektuj sve; prazna lista = korisnik je poništio selekciju / nova iz crteža.
             var selection = _pendingSelection;
+            var lengthsEnabled = _pendingLengthsEnabled;
+            var leftLength = _pendingLeftLength;
+            var rightLength = _pendingRightLength;
             _pendingSettings = null;
             _pendingSelection = null;
+            _pendingLengthsEnabled = null;
+            _pendingLeftLength = null;
+            _pendingRightLength = null;
 
-            var dialog = new CrossAxisSettingsDialog(axes, LoadSettings, ReloadAxes, initial, selection);
+            var dialog = new CrossAxisSettingsDialog(
+                axes,
+                LoadSettings,
+                ReloadAxes,
+                initial,
+                selection,
+                lengthsEnabled,
+                leftLength,
+                rightLength);
             var accepted = AcApp.ShowModalWindow(dialog) == true;
 
             if (accepted && dialog.CloseAction == CrossAxisSettingsCloseAction.Confirmed)
@@ -84,7 +101,7 @@ public sealed class CrossAxisCommandService
             switch (dialog.CloseAction)
             {
                 case CrossAxisSettingsCloseAction.PickAxesInDrawing:
-                    _pendingSettings = dialog.Result.Settings;
+                    RememberPending(dialog.Result);
                     _pendingSelection = PickAndSelectAxes(doc) ?? dialog.Result.SelectedHandles;
                     continue;
                 case CrossAxisSettingsCloseAction.PickLabelsOffset:
@@ -108,20 +125,52 @@ public sealed class CrossAxisCommandService
         }
     }
 
+    private static void RememberPending(CrossAxisSettingsDialogResult result)
+    {
+        _pendingSettings = result.Settings;
+        _pendingSelection = result.SelectedHandles;
+        _pendingLengthsEnabled = result.LengthsEnabled;
+        _pendingLeftLength = result.LeftLength;
+        _pendingRightLength = result.RightLength;
+    }
+
     private static void ApplySettings(Document doc, CrossAxisSettingsDialogResult result)
     {
         using var tr = doc.Database.TransactionManager.StartTransaction();
+
+        // Primena na ose u tabeli (selektovane / izabrane).
+        var targetHandles = result.SelectedHandles.Count > 0
+            ? result.SelectedHandles
+            : result.AllAxes.Select(axis => axis.Handle).ToList();
+
         var updated = CrossAxisLayoutService.ApplyPlacement(
             tr,
             doc.Database,
-            result.SelectedHandles,
+            targetHandles,
             result.Settings);
+
+        var resized = 0;
+        if (result.LengthsEnabled)
+        {
+            StationFontPreferences.Load();
+            StationFontPreferences.Save(
+                StationFontPreferences.FontFileName,
+                result.LeftLength,
+                result.RightLength);
+            // Posle placement — resize sa tačnim originom na putnoj osi.
+            resized = CrossAxisLayoutService.ApplyLengthsToHandles(
+                tr,
+                doc.Database,
+                targetHandles,
+                result.LeftLength,
+                result.RightLength);
+        }
+
         tr.Commit();
 
         doc.Editor.WriteMessage(
-            updated > 0
-                ? $"\nTCM-INZINJERING: Pomereno {updated} oznaka na {result.SelectedHandles.Count} poprecnih osa."
-                : $"\nTCM-INZINJERING: Nije pomerena nijedna oznaka. Proveri da li oko ose postoji tekst stacionaze (STA … / 0-xxx.xx).");
+            $"\nTCM-INZINJERING: Pomereno {updated} oznaka na {targetHandles.Count} poprecnih osa" +
+            (result.LengthsEnabled ? $"; duzina L={result.LeftLength:0.####}/D={result.RightLength:0.####} ({resized} osa)." : "."));
     }
 
     private static IReadOnlyList<long>? PickAndSelectAxes(Document doc)
@@ -129,26 +178,20 @@ public sealed class CrossAxisCommandService
         var ed = doc.Editor;
         var options = new PromptSelectionOptions
         {
-            MessageForAdding = "\nIzaberite poprecne ose (linije/polilinije ili stapiće stacionaze): "
+            MessageForAdding = "\nIzaberite objekte (selektovace se samo poprecne ose): "
         };
-        var filter = new SelectionFilter(
-        [
-            new TypedValue((int)DxfCode.Start, "LINE,POLYLINE,LWPOLYLINE")
-        ]);
-        var selection = ed.GetSelection(options, filter);
+        // Bez filtera — korisnik moze Window/All; filtriramo na poprecne ose / RoleTick.
+        var selection = ed.GetSelection(options);
         if (selection.Status != PromptStatus.OK)
         {
             return null;
         }
 
         using var tr = doc.Database.TransactionManager.StartTransaction();
-        var registered = CrossAxisLayoutService.RegisterEntities(
-            tr,
-            doc.Database,
-            selection.Value.GetObjectIds());
-
+        var candidateIds = new List<ObjectId>();
         var handles = new List<long>();
         var names = new List<string>();
+
         foreach (SelectedObject selected in selection.Value)
         {
             if (selected?.ObjectId.IsNull != false)
@@ -157,6 +200,35 @@ public sealed class CrossAxisCommandService
             }
 
             var entity = (Entity)tr.GetObject(selected.ObjectId, OpenMode.ForRead);
+            var isCrossAxis = CrossAxisXData.TryReadCrossAxis(entity, out var number);
+            var isTick = RoadXData.TryReadStationLabel(entity, out _, out var role, out _) &&
+                         role == RoadXData.RoleTick;
+            if (!isCrossAxis && !isTick)
+            {
+                continue;
+            }
+
+            candidateIds.Add(selected.ObjectId);
+            if (isCrossAxis)
+            {
+                handles.Add(entity.Handle.Value);
+                names.Add($"STA {number}");
+            }
+        }
+
+        var registered = CrossAxisLayoutService.RegisterEntities(tr, doc.Database, candidateIds);
+
+        // Posle registracije RoleTick → CX, ponovo sakupi handlove.
+        handles.Clear();
+        names.Clear();
+        foreach (var id in candidateIds)
+        {
+            if (id.IsErased)
+            {
+                continue;
+            }
+
+            var entity = (Entity)tr.GetObject(id, OpenMode.ForRead);
             if (!CrossAxisXData.TryReadCrossAxis(entity, out var number))
             {
                 continue;
@@ -171,7 +243,7 @@ public sealed class CrossAxisCommandService
         if (handles.Count == 0)
         {
             ed.WriteMessage(
-                "\nTCM-INZINJERING: Nista nije registrovano. Izaberite LINIJU poprecne ose ili stapic stacionaze (ne tekst).");
+                "\nTCM-INZINJERING: U selekciji nema poprecnih osa (zanemareni su ostali objekti).");
             return Array.Empty<long>();
         }
 
@@ -246,6 +318,9 @@ public sealed class CrossAxisCommandService
 
             _pendingSettings = settings;
             _pendingSelection = pending.SelectedHandles;
+            _pendingLengthsEnabled = pending.LengthsEnabled;
+            _pendingLeftLength = pending.LeftLength;
+            _pendingRightLength = pending.RightLength;
         }
 
         return true;

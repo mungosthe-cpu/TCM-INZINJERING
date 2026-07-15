@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>TCM-INZINJERING-Setup</AssemblyName>
     <RootNamespace>TcmInzenjering.Setup</RootNamespace>
     <PlatformTarget>x64</PlatformTarget>
@@ -13,10 +14,13 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="payload\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="payload\**\*" CopyToOutputDirectory="PreserveNewest" Condition="Exists('payload')" />
+    <Content Include="TCM Logo.png" CopyToOutputDirectory="PreserveNewest" Link="TCM Logo.png" />
+    <EmbeddedResource Include="TCM Logo.png" LogicalName="TCM Logo.png" />
   </ItemGroup>
 
 </Project>

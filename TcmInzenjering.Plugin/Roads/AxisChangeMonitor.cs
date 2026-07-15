@@ -164,7 +164,8 @@ internal static class AxisChangeMonitor
 
             if (updated > 0)
             {
-                doc.Editor.WriteMessage($"\nTCM-INZINJERING: Azurirana geometrija osovine i {updated} oznaka stacionaze.");
+                doc.Editor.WriteMessage(
+                    $"\nTCM-INZINJERING: Azurirana geometrija osovine, oznake i 3D projekcija (ako postoji) — {updated} elemenata.");
             }
         }
         catch (System.Exception ex)
@@ -222,6 +223,7 @@ internal static class AxisChangeMonitor
             using var docLock = doc.LockDocument();
             using var tr = doc.Database.TransactionManager.StartTransaction();
             RoadDrawing.EnsureAxisLayerPickThrough(tr, doc.Database);
+            RoadDrawing.EnsureProjectedAxisLayerPickThrough(tr, doc.Database);
             foreach (var axisName in RoadAxisStore.GetAxisNames(tr, doc.Database))
             {
                 var metadata = RoadAxisStore.Load(tr, doc.Database, axisName);
@@ -237,6 +239,7 @@ internal static class AxisChangeMonitor
                 }
 
                 AxisReferenceTracker.Update(axisName, axis.Elements[0].Start);
+                RoadDrawing.EnsureTangentOnTop(tr, doc.Database, axisName);
             }
 
             tr.Commit();

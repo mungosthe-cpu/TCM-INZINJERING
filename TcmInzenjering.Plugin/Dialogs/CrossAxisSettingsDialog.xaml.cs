@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using TcmInzenjering.Plugin.Roads;
 using TcmInzenjering.Plugin.Roads.CrossAxis;
 
 namespace TcmInzenjering.Plugin.Dialogs;
@@ -20,6 +21,9 @@ public sealed class CrossAxisSettingsDialogResult
     public bool IndividualMode { get; init; }
     public IReadOnlyList<long> SelectedHandles { get; init; } = Array.Empty<long>();
     public IReadOnlyList<CrossAxisInfo> AllAxes { get; init; } = Array.Empty<CrossAxisInfo>();
+    public bool LengthsEnabled { get; init; }
+    public double LeftLength { get; init; } = StationFontPreferences.DefaultHalfTickLength;
+    public double RightLength { get; init; } = StationFontPreferences.DefaultHalfTickLength;
 }
 
 public partial class CrossAxisSettingsDialog : Window
@@ -39,7 +43,10 @@ public partial class CrossAxisSettingsDialog : Window
         Func<long, CrossAxisPlacementSettings> loadSettings,
         Func<IReadOnlyList<CrossAxisInfo>> reloadAxes,
         CrossAxisPlacementSettings? initialSettings = null,
-        IReadOnlyList<long>? selectedHandles = null)
+        IReadOnlyList<long>? selectedHandles = null,
+        bool? lengthsEnabled = null,
+        double? leftLength = null,
+        double? rightLength = null)
     {
         _axes = axes;
         _loadSettings = loadSettings;
@@ -48,6 +55,12 @@ public partial class CrossAxisSettingsDialog : Window
         InitializeComponent();
         AxisListBox.ItemsSource = _axes;
         ApplySettingsToUi(initialSettings ?? new CrossAxisPlacementSettings());
+        StationFontPreferences.Load();
+        LengthsEnabledCheck.IsChecked = lengthsEnabled ?? false;
+        LeftLengthBox.Text = (leftLength ?? StationFontPreferences.CrossAxisLeftLength)
+            .ToString("0.####", CultureInfo.InvariantCulture);
+        RightLengthBox.Text = (rightLength ?? StationFontPreferences.CrossAxisRightLength)
+            .ToString("0.####", CultureInfo.InvariantCulture);
         Loaded += OnLoaded;
     }
 
@@ -172,13 +185,13 @@ public partial class CrossAxisSettingsDialog : Window
 
     private void OnPickAxesInDrawing(object sender, RoutedEventArgs e)
     {
-        if (!TryReadUi(out var settings, out var message))
+        if (!TryReadUi(out var settings, out var left, out var right, out var message))
         {
             MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        Result = BuildResult(settings);
+        Result = BuildResult(settings, left, right);
         CloseAction = CrossAxisSettingsCloseAction.PickAxesInDrawing;
         DialogResult = false;
     }
@@ -197,20 +210,20 @@ public partial class CrossAxisSettingsDialog : Window
             return;
         }
 
-        if (!TryReadUi(out var settings, out var message))
+        if (!TryReadUi(out var settings, out var left, out var right, out var message))
         {
             MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        Result = BuildResult(settings);
+        Result = BuildResult(settings, left, right);
         CloseAction = action;
         DialogResult = false;
     }
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        if (!TryReadUi(out var settings, out var message))
+        if (!TryReadUi(out var settings, out var left, out var right, out var message))
         {
             MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -222,7 +235,7 @@ public partial class CrossAxisSettingsDialog : Window
             return;
         }
 
-        Result = BuildResult(settings);
+        Result = BuildResult(settings, left, right);
         CloseAction = CrossAxisSettingsCloseAction.Confirmed;
         DialogResult = true;
     }
@@ -233,13 +246,19 @@ public partial class CrossAxisSettingsDialog : Window
         DialogResult = false;
     }
 
-    private CrossAxisSettingsDialogResult BuildResult(CrossAxisPlacementSettings settings) =>
+    private CrossAxisSettingsDialogResult BuildResult(
+        CrossAxisPlacementSettings settings,
+        double leftLength,
+        double rightLength) =>
         new()
         {
             Settings = settings,
             IndividualMode = IndividualModeCheck.IsChecked == true,
             SelectedHandles = GetSelectedHandles(),
-            AllAxes = _axes
+            AllAxes = _axes,
+            LengthsEnabled = LengthsEnabledCheck.IsChecked == true,
+            LeftLength = leftLength,
+            RightLength = rightLength
         };
 
     private IReadOnlyList<long> GetSelectedHandles() =>
@@ -268,9 +287,15 @@ public partial class CrossAxisSettingsDialog : Window
         }
     }
 
-    private bool TryReadUi(out CrossAxisPlacementSettings settings, out string errorMessage)
+    private bool TryReadUi(
+        out CrossAxisPlacementSettings settings,
+        out double leftLength,
+        out double rightLength,
+        out string errorMessage)
     {
         settings = new CrossAxisPlacementSettings();
+        leftLength = StationFontPreferences.DefaultHalfTickLength;
+        rightLength = StationFontPreferences.DefaultHalfTickLength;
         errorMessage = string.Empty;
 
         if (!TryParseOffset(LabelsOffsetXBox.Text, out var labelsX) ||
@@ -279,6 +304,18 @@ public partial class CrossAxisSettingsDialog : Window
             !TryParseOffset(StationsOffsetYBox.Text, out var stationsY))
         {
             errorMessage = "Odmak mora biti validan broj.";
+            return false;
+        }
+
+        if (!TryParsePositive(LeftLengthBox.Text, out leftLength))
+        {
+            errorMessage = "Unesite ispravnu dužinu LEVO (> 0).";
+            return false;
+        }
+
+        if (!TryParsePositive(RightLengthBox.Text, out rightLength))
+        {
+            errorMessage = "Unesite ispravnu dužinu DESNO (> 0).";
             return false;
         }
 
@@ -304,4 +341,20 @@ public partial class CrossAxisSettingsDialog : Window
 
     private static bool TryParseOffset(string text, out double value) =>
         double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+
+    private static bool TryParsePositive(string text, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (!double.TryParse(text.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+        {
+            return false;
+        }
+
+        return value > 0;
+    }
 }

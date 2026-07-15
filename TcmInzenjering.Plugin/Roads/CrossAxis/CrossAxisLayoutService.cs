@@ -107,11 +107,9 @@ internal static class CrossAxisLayoutService
                 continue;
             }
 
-            var length = GetEntityLength(axisEntity);
-            if (length < 1e-6)
-            {
-                length = Math.Max(options.TickLength, 1.0);
-            }
+            StationFontPreferences.Load();
+            var leftLength = StationFontPreferences.CrossAxisLeftLength;
+            var rightLength = StationFontPreferences.CrossAxisRightLength;
 
             var across = new Vector3d(-direction.Value.Y, direction.Value.X, 0);
             if (across.Length < 1e-9)
@@ -120,9 +118,9 @@ internal static class CrossAxisLayoutService
             }
 
             across = across.GetNormal();
-            var half = length * 0.5;
-            var start = point.Value - across * half;
-            var end = point.Value + across * half;
+            // Levo = +across, desno = -across (gledano u smeru rasta stacionaze).
+            var start = point.Value - across * rightLength;
+            var end = point.Value + across * leftLength;
 
             if (!axisEntity.IsWriteEnabled)
             {
@@ -150,17 +148,293 @@ internal static class CrossAxisLayoutService
 
             CrossAxisXData.AttachCrossAxis(axisEntity, number, roadAxisName);
             var settings = CrossAxisStore.Load(tr, db, handle);
-            updated += RepositionAnnotations(
+            // Origin = tačka na putnoj osi (ne geometric midpoint, koji klizi kad L≠D).
+            var along = across;
+            var frameAcross = new Vector3d(-along.Y, along.X, 0).GetNormal();
+            updated += RepositionAnnotationsAt(
                 tr,
                 db,
                 axisEntity,
                 settings,
+                point.Value,
+                along,
+                frameAcross,
                 options,
                 station,
                 roadAxisName);
         }
 
         return updated;
+    }
+
+    /// <summary>
+    /// Primenjuje font iz podesavanja na tekstove stacionaze.
+    /// </summary>
+    public static int ApplyFontPreferences(Transaction tr, Database db)
+    {
+        StationFontPreferences.Load();
+        RoadDrawing.EnsureRegApp(tr, db);
+        StationTextStyleHelper.Ensure(tr, db, StationFontPreferences.FontFileName);
+        return RefreshStationTextStyles(tr, db);
+    }
+
+    /// <summary>
+    /// Primenjuje levo/desno duzine na date poprecne ose (handlovi iz tabele).
+    /// </summary>
+    public static int ApplyLengthsToHandles(
+        Transaction tr,
+        Database db,
+        IEnumerable<long> handles,
+        double leftLength,
+        double rightLength)
+    {
+        var left = Math.Max(0.1, leftLength);
+        var right = Math.Max(0.1, rightLength);
+        RoadDrawing.EnsureRegApp(tr, db);
+
+        var axisCache = new Dictionary<string, RoadAxis?>(StringComparer.OrdinalIgnoreCase);
+        var resized = 0;
+
+        foreach (var handle in handles)
+        {
+            if (!CrossAxisScanner.TryGetEntity(tr, db, handle, out var entity))
+            {
+                continue;
+            }
+
+            if (!TryResizeCrossAxisEntity(tr, db, entity, left, right, axisCache))
+            {
+                continue;
+            }
+
+            resized++;
+        }
+
+        return resized;
+    }
+
+    /// <summary>
+    /// Primenjuje levo/desno duzine na sve registrovane poprecne ose i RoleTick stapiće,
+    /// zatim osvezi tekstualne oznake. Takodje azurira font stil.
+    /// </summary>
+    public static (int CrossAxes, int FontStyles) ApplyDrawingPreferences(Transaction tr, Database db)
+    {
+        StationFontPreferences.Load();
+        var left = StationFontPreferences.CrossAxisLeftLength;
+        var right = StationFontPreferences.CrossAxisRightLength;
+        RoadDrawing.EnsureRegApp(tr, db);
+        StationTextStyleHelper.Ensure(tr, db, StationFontPreferences.FontFileName);
+
+        var axisCache = new Dictionary<string, RoadAxis?>(StringComparer.OrdinalIgnoreCase);
+        var resized = 0;
+        var modelSpaceId = SymbolUtilityServices.GetBlockModelSpaceId(db);
+        var modelSpace = (BlockTableRecord)tr.GetObject(modelSpaceId, OpenMode.ForRead);
+
+        foreach (ObjectId id in modelSpace)
+        {
+            if (id.IsErased)
+            {
+                continue;
+            }
+
+            var entity = tr.GetObject(id, OpenMode.ForRead) as Entity;
+            if (entity is null)
+            {
+                continue;
+            }
+
+            var isCrossAxis = CrossAxisXData.TryReadCrossAxis(entity, out _, out _);
+            var isTick = RoadXData.TryReadStationLabel(entity, out _, out var role, out _) &&
+                         role == RoadXData.RoleTick;
+            if (!isCrossAxis && !isTick)
+            {
+                continue;
+            }
+
+            if (!TryResizeCrossAxisEntity(tr, db, entity, left, right, axisCache))
+            {
+                continue;
+            }
+
+            resized++;
+        }
+
+        var fontUpdated = RefreshStationTextStyles(tr, db);
+        return (resized, fontUpdated);
+    }
+
+    private static bool TryResizeCrossAxisEntity(
+        Transaction tr,
+        Database db,
+        Entity entity,
+        double left,
+        double right,
+        Dictionary<string, RoadAxis?> axisCache)
+    {
+        var isCrossAxis = CrossAxisXData.TryReadCrossAxis(entity, out var number, out var parent);
+        var isTick = RoadXData.TryReadStationLabel(entity, out var tickAxis, out var role, out var station) &&
+                     role == RoadXData.RoleTick;
+        if (!isCrossAxis && !isTick)
+        {
+            return false;
+        }
+
+        Point3d? origin = null;
+        Vector3d? across = null;
+
+        var axisName = !string.IsNullOrWhiteSpace(parent)
+            ? parent
+            : (isTick ? tickAxis : null);
+        var stationValue = isTick ? station : (double?)null;
+
+        if (!string.IsNullOrWhiteSpace(axisName))
+        {
+            if (!axisCache.TryGetValue(axisName, out var roadAxis))
+            {
+                var metadata = RoadAxisStore.Load(tr, db, axisName);
+                roadAxis = metadata is null
+                    ? null
+                    : AxisGeometryReader.ReadAxis(tr, db, axisName, metadata.StartStation);
+                axisCache[axisName] = roadAxis;
+            }
+
+            if (roadAxis is not null)
+            {
+                if (stationValue is null && isCrossAxis)
+                {
+                    var metadata = RoadAxisStore.Load(tr, db, axisName);
+                    if (metadata is not null)
+                    {
+                        var options = metadata.ToLabelOptions();
+                        var stations = RoadDrawing.CollectStationsForSync(roadAxis, options);
+                        var stationIndex = number - options.AxisCounterStart;
+                        if (stationIndex >= 0 && stationIndex < stations.Count)
+                        {
+                            stationValue = stations[stationIndex];
+                        }
+                    }
+                }
+
+                if (stationValue is not null)
+                {
+                    var point = roadAxis.GetPointAtStation(stationValue.Value);
+                    var direction = roadAxis.SampleDirectionAtStation(stationValue.Value);
+                    if (point is not null && direction is not null && direction.Value.Length > 1e-9)
+                    {
+                        origin = point.Value;
+                        across = new Vector3d(-direction.Value.Y, direction.Value.X, 0).GetNormal();
+                    }
+                }
+            }
+        }
+
+        if (origin is null || across is null)
+        {
+            // Fallback: midpoint; line direction toward End = left.
+            if (!CrossAxisGeometry.TryGetFrame(entity, out var mid, out var along, out _))
+            {
+                return false;
+            }
+
+            origin = mid;
+            across = along; // End strana = leva
+        }
+
+        if (!TrySetLineEndpoints(entity, origin.Value - across.Value * right, origin.Value + across.Value * left))
+        {
+            return false;
+        }
+
+        if (isCrossAxis)
+        {
+            // Origin mora biti tačka na putnoj osi (ne midpoint linije) jer L≠D pomera midpoint.
+            var along = across.Value;
+            var frameAcross = new Vector3d(-along.Y, along.X, 0);
+            if (frameAcross.Length > 1e-9)
+            {
+                RepositionAnnotationsAt(
+                    tr,
+                    db,
+                    entity,
+                    CrossAxisStore.Load(tr, db, entity.Handle.Value),
+                    origin.Value,
+                    along,
+                    frameAcross.GetNormal());
+            }
+            else
+            {
+                RepositionAnnotations(
+                    tr,
+                    db,
+                    entity,
+                    CrossAxisStore.Load(tr, db, entity.Handle.Value));
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TrySetLineEndpoints(Entity entity, Point3d start, Point3d end)
+    {
+        if (!entity.IsWriteEnabled)
+        {
+            entity.UpgradeOpen();
+        }
+
+        switch (entity)
+        {
+            case Line line:
+                line.StartPoint = start;
+                line.EndPoint = end;
+                return true;
+            case Polyline polyline:
+                while (polyline.NumberOfVertices > 0)
+                {
+                    polyline.RemoveVertexAt(0);
+                }
+
+                polyline.AddVertexAt(0, new Point2d(start.X, start.Y), 0, 0, 0);
+                polyline.AddVertexAt(1, new Point2d(end.X, end.Y), 0, 0, 0);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static int RefreshStationTextStyles(Transaction tr, Database db)
+    {
+        var styleId = StationTextStyleHelper.Ensure(tr, db, StationFontPreferences.FontFileName);
+        var count = 0;
+        var modelSpaceId = SymbolUtilityServices.GetBlockModelSpaceId(db);
+        var modelSpace = (BlockTableRecord)tr.GetObject(modelSpaceId, OpenMode.ForRead);
+        foreach (ObjectId id in modelSpace)
+        {
+            if (id.IsErased)
+            {
+                continue;
+            }
+
+            if (tr.GetObject(id, OpenMode.ForRead) is not DBText dbText)
+            {
+                continue;
+            }
+
+            if (!RoadXData.TryReadStationLabel(dbText, out _, out var role, out _) ||
+                (role != RoadXData.RoleText && role != RoadXData.RoleChainage))
+            {
+                continue;
+            }
+
+            if (!dbText.IsWriteEnabled)
+            {
+                dbText.UpgradeOpen();
+            }
+
+            dbText.TextStyleId = styleId;
+            count++;
+        }
+
+        return count;
     }
 
     private static bool IsTickLikeCrossAxis(Entity entity, double tickLength)
@@ -454,12 +728,37 @@ internal static class CrossAxisLayoutService
         double? stationValue = null,
         string? roadAxisName = null)
     {
-        if (!CrossAxisXData.TryReadCrossAxis(axisEntity, out var number, out var parentRoadAxisName))
+        if (!CrossAxisGeometry.TryGetFrame(axisEntity, out var origin, out var along, out var across))
         {
             return 0;
         }
 
-        if (!CrossAxisGeometry.TryGetFrame(axisEntity, out var origin, out var along, out var across))
+        return RepositionAnnotationsAt(
+            tr,
+            db,
+            axisEntity,
+            settings,
+            origin,
+            along,
+            across,
+            options,
+            stationValue,
+            roadAxisName);
+    }
+
+    private static int RepositionAnnotationsAt(
+        Transaction tr,
+        Database db,
+        Entity axisEntity,
+        CrossAxisPlacementSettings settings,
+        Point3d origin,
+        Vector3d along,
+        Vector3d across,
+        StationLabelOptions? options = null,
+        double? stationValue = null,
+        string? roadAxisName = null)
+    {
+        if (!CrossAxisXData.TryReadCrossAxis(axisEntity, out var number, out var parentRoadAxisName))
         {
             return 0;
         }

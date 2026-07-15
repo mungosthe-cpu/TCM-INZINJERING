@@ -60,9 +60,15 @@ public sealed class Commands
     {
 #if BRICSCAD
         AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-            "\nTCM-INZINJERING: Podesavanje fonta stacionaze nije dostupno u BricsCAD verziji plugina.");
+            "\nTCM-INZINJERING: Podesavanja nisu dostupna u BricsCAD verziji plugina.");
         return;
 #else
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
         var dialog = new Dialogs.StationFontDialog();
         if (AcApp.ShowModalWindow(dialog) != true)
         {
@@ -70,8 +76,15 @@ public sealed class Commands
         }
 
         Roads.StationFontPreferences.Save(dialog.SelectedFontFile);
-        var doc = AcApp.DocumentManager.MdiActiveDocument;
-        doc?.Editor.WriteMessage($"\nTCM-INZINJERING: Font stacionaze: {dialog.SelectedFontFile}. Osvezi stacionaze (TCMSTACAZUR).");
+
+        using (doc.LockDocument())
+        using (var tr = doc.TransactionManager.StartTransaction())
+        {
+            var texts = Roads.CrossAxis.CrossAxisLayoutService.ApplyFontPreferences(tr, doc.Database);
+            tr.Commit();
+            doc.Editor.WriteMessage(
+                $"\nTCM-INZINJERING: Font stacionaze primenjen: {dialog.SelectedFontFile} ({texts} tekstova).");
+        }
 #endif
     }
 

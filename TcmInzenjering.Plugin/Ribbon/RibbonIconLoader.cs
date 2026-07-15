@@ -6,9 +6,20 @@ namespace TcmInzenjering.Plugin.Ribbon;
 
 internal static class RibbonIconLoader
 {
-    private const int RibbonIconSize = 32;
+    // AutoCAD Ribbon Large = 32×32, Small = 16×16 (standard AdWindows).
+    private const int LargePx = 32;
+    private const int SmallPx = 16;
 
-    public static BitmapImage? Load(string iconName)
+    public static BitmapImage? LoadLarge(string iconName) => Load(iconName, LargePx);
+
+    public static BitmapImage? LoadSmall(string iconName) => Load(iconName, SmallPx);
+
+    public static BitmapImage? Load(string iconName) => LoadLarge(iconName);
+
+    public static (BitmapImage? Large, BitmapImage? Small) LoadPair(string iconName) =>
+        (LoadLarge(iconName), LoadSmall(iconName));
+
+    private static BitmapImage? Load(string iconName, int size)
     {
         foreach (var directory in GetIconDirectories())
         {
@@ -18,31 +29,34 @@ internal static class RibbonIconLoader
                 continue;
             }
 
-            return LoadFromPath(path);
+            return LoadFromPath(path, size);
         }
 
-        if (string.Equals(iconName, "toolspace", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(iconName, "toolspace", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(iconName, "projekcija", StringComparison.OrdinalIgnoreCase))
         {
-            var fallback = GetIconDirectories()
-                .Select(directory => Path.Combine(directory, "info.png"))
-                .FirstOrDefault(File.Exists);
-            if (!string.IsNullOrWhiteSpace(fallback))
+            foreach (var directory in GetIconDirectories())
             {
-                return LoadFromPath(fallback);
+                var fallback = Path.Combine(directory, "info.png");
+                if (File.Exists(fallback))
+                {
+                    return LoadFromPath(fallback, size);
+                }
             }
         }
 
         return null;
     }
 
-    private static BitmapImage LoadFromPath(string path)
+    private static BitmapImage LoadFromPath(string path, int size)
     {
         var image = new BitmapImage();
         image.BeginInit();
         image.UriSource = new Uri(path, UriKind.Absolute);
         image.CacheOption = BitmapCacheOption.OnLoad;
-        image.DecodePixelWidth = RibbonIconSize;
-        image.DecodePixelHeight = RibbonIconSize;
+        // Tačno 32/16 — AdWindows ne uvećava iznad Large; ovo sprečava blur/downscale artefakte.
+        image.DecodePixelWidth = size;
+        image.DecodePixelHeight = size;
         image.EndInit();
         image.Freeze();
         return image;
