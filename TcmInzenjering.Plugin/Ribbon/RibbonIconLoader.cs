@@ -16,10 +16,24 @@ internal static class RibbonIconLoader
 
     public static BitmapImage? Load(string iconName) => LoadLarge(iconName);
 
-    public static (BitmapImage? Large, BitmapImage? Small) LoadPair(string iconName) =>
-        (LoadLarge(iconName), LoadSmall(iconName));
+    /// <summary>Učitava PNG bez DecodePixel* — native rezolucija fajla (za situacija_32 / _16).</summary>
+    public static BitmapImage? LoadNative(string iconName)
+    {
+        foreach (var directory in GetIconDirectories())
+        {
+            var path = Path.Combine(directory, $"{iconName}.png");
+            if (!File.Exists(path))
+            {
+                continue;
+            }
 
-    private static BitmapImage? Load(string iconName, int size)
+            return LoadFromPath(path, decodeSize: null);
+        }
+
+        return null;
+    }
+
+    public static BitmapImage? Load(string iconName, int size)
     {
         foreach (var directory in GetIconDirectories())
         {
@@ -48,15 +62,21 @@ internal static class RibbonIconLoader
         return null;
     }
 
-    private static BitmapImage LoadFromPath(string path, int size)
+    public static (BitmapImage? Large, BitmapImage? Small) LoadPair(string iconName) =>
+        (LoadLarge(iconName), LoadSmall(iconName));
+
+    private static BitmapImage LoadFromPath(string path, int? decodeSize)
     {
         var image = new BitmapImage();
         image.BeginInit();
         image.UriSource = new Uri(path, UriKind.Absolute);
         image.CacheOption = BitmapCacheOption.OnLoad;
-        // Tačno 32/16 — AdWindows ne uvećava iznad Large; ovo sprečava blur/downscale artefakte.
-        image.DecodePixelWidth = size;
-        image.DecodePixelHeight = size;
+        if (decodeSize is int size)
+        {
+            image.DecodePixelWidth = size;
+            image.DecodePixelHeight = size;
+        }
+
         image.EndInit();
         image.Freeze();
         return image;

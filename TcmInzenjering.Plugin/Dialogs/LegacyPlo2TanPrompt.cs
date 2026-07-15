@@ -1,4 +1,4 @@
-#if NET48
+#if BRICSCAD
 using Autodesk.AutoCAD.EditorInput;
 using TcmInzenjering.Plugin.Roads;
 

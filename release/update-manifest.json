@@ -1,5 +1,5 @@
 ﻿{
-    "Version":  "1.1.11",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.11.exe",
-    "ReleaseNotes":  "Projekcija osovine na teren, CGS stil ribbon (SITUACIJA), About dialog i ikone."
+    "Version":  "1.1.12",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.12.exe",
+    "ReleaseNotes":  "CGS ribbon hub (Situacija, Poduzni profil, Info, Podesavanja, Nadogradnja, Deinstalacija), Plo2Tan dialog na AutoCAD 2024, bolji izbor polilinije."
 }

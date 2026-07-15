@@ -24,7 +24,7 @@ public sealed partial class RoadCommands
         try
         {
             var db = doc.Database;
-            var polylineId = SelectPolyline(ed);
+            var polylineId = SelectPolyline(ed, db);
             if (polylineId == ObjectId.Null)
             {
                 return;
@@ -38,7 +38,7 @@ public sealed partial class RoadCommands
                 previewTr.Commit();
             }
 
-#if NET48
+#if BRICSCAD
             if (!LegacyPlo2TanPrompt.TryCollect(ed, polylineLength, out var axisName, out var curveRadius, out var textHeight, out var stationOptions))
             {
                 ed.WriteMessage("\nTCM-INZINJERING: komanda otkazana.");
@@ -222,7 +222,7 @@ public sealed partial class RoadCommands
         var db = doc.Database;
         var ed = doc.Editor;
 
-        var polylineId = SelectPolyline(ed);
+        var polylineId = SelectPolyline(ed, db);
         if (polylineId == ObjectId.Null)
         {
             return;
@@ -293,9 +293,10 @@ public sealed partial class RoadCommands
     public void AxisInfo()
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
+        var db = doc.Database;
         var ed = doc.Editor;
 
-        var polylineId = SelectPolyline(ed);
+        var polylineId = SelectPolyline(ed, db);
         if (polylineId == ObjectId.Null)
         {
             return;
@@ -386,13 +387,85 @@ public sealed partial class RoadCommands
         }
     }
 
-    private static ObjectId SelectPolyline(Editor ed)
+    private static ObjectId SelectPolyline(Editor ed, Database db)
     {
         var options = new PromptEntityOptions("\nIzaberite polylinu osovine: ");
-        options.SetRejectMessage("\nMora biti polylinija (LWPOLYLINE).");
-        options.AddAllowedClass(typeof(Polyline), true);
+        options.SetRejectMessage("\nIzaberite LWPOLYLINE ili 2D POLYLINE (ne 3D polyline / Alignment).");
+        options.AddAllowedClass(typeof(Polyline), exactMatch: false);
+        options.AddAllowedClass(typeof(Polyline2d), exactMatch: false);
         var result = ed.GetEntity(options);
-        return result.Status == PromptStatus.OK ? result.ObjectId : ObjectId.Null;
+        if (result.Status != PromptStatus.OK)
+        {
+            return ObjectId.Null;
+        }
+
+        using var tr = db.TransactionManager.StartTransaction();
+        var entity = tr.GetObject(result.ObjectId, OpenMode.ForRead);
+        if (entity is Polyline)
+        {
+            tr.Commit();
+            return result.ObjectId;
+        }
+
+        if (entity is Polyline2d poly2d)
+        {
+            var convertedId = ConvertPolyline2dToLightweight(tr, db, poly2d);
+            tr.Commit();
+            if (convertedId.IsNull)
+            {
+                ed.WriteMessage("\nTCM-INZINJERING: nije uspela konverzija POLYLINE u LWPOLYLINE.");
+            }
+            else
+            {
+                ed.WriteMessage("\nTCM-INZINJERING: stara POLYLINE je konvertovana u LWPOLYLINE.");
+            }
+
+            return convertedId;
+        }
+
+        tr.Commit();
+        return ObjectId.Null;
+    }
+
+    private static ObjectId ConvertPolyline2dToLightweight(Transaction tr, Database db, Polyline2d source)
+    {
+        source.UpgradeOpen();
+        var lw = new Polyline();
+        var index = 0;
+        foreach (ObjectId vertexId in source)
+        {
+            if (tr.GetObject(vertexId, OpenMode.ForRead) is not Vertex2d vertex)
+            {
+                continue;
+            }
+
+            if (vertex.VertexType == Vertex2dType.SplineControlVertex)
+            {
+                continue;
+            }
+
+            lw.AddVertexAt(index, new Point2d(vertex.Position.X, vertex.Position.Y), vertex.Bulge, 0, 0);
+            index++;
+        }
+
+        if (index < 2)
+        {
+            lw.Dispose();
+            return ObjectId.Null;
+        }
+
+        lw.Closed = source.Closed;
+        lw.Layer = source.Layer;
+        lw.Color = source.Color;
+        lw.Linetype = source.Linetype;
+        lw.LineWeight = source.LineWeight;
+
+        var ownerId = source.OwnerId;
+        var owner = (BlockTableRecord)tr.GetObject(ownerId, OpenMode.ForWrite);
+        var newId = owner.AppendEntity(lw);
+        tr.AddNewlyCreatedDBObject(lw, true);
+        source.Erase();
+        return newId;
     }
 
     private static double? PromptDouble(Editor ed, string message, double defaultValue)

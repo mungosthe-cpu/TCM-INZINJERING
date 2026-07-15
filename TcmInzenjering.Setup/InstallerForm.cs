@@ -9,7 +9,7 @@ internal sealed class InstallerForm : Form
     private readonly Label _statusLabel;
     private readonly ProgressBar _progress;
     private readonly Button _closeButton;
-    private readonly PictureBox _logoBox;
+    private readonly Panel _overlay;
 
     public InstallerForm()
     {
@@ -22,19 +22,19 @@ internal sealed class InstallerForm : Form
         BackColor = Color.FromArgb(12, 28, 56);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10f);
+        DoubleBuffered = true;
 
-        _logoBox = new PictureBox
+        var logoBox = new PictureBox
         {
-            Dock = DockStyle.Top,
-            Height = 340,
-            SizeMode = PictureBoxSizeMode.Zoom,
+            Dock = DockStyle.Fill,
+            SizeMode = PictureBoxSizeMode.StretchImage,
             BackColor = Color.FromArgb(12, 28, 56)
         };
 
         var logo = LoadLogo();
         if (logo is not null)
         {
-            _logoBox.Image = logo;
+            logoBox.Image = logo;
             try
             {
                 Icon = Icon.FromHandle(((Bitmap)logo).GetHicon());
@@ -45,26 +45,28 @@ internal sealed class InstallerForm : Form
             }
         }
 
-        var footer = new Panel
+        _overlay = new Panel
         {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(20, 12, 20, 12),
-            BackColor = Color.FromArgb(8, 20, 40)
+            Dock = DockStyle.Bottom,
+            Height = 118,
+            Padding = new Padding(16, 10, 16, 10),
+            BackColor = Color.FromArgb(200, 8, 20, 40)
         };
 
         _statusLabel = new Label
         {
             Dock = DockStyle.Top,
-            Height = 48,
+            Height = 42,
             Text = "Priprema instalacije…",
             TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = Color.White
+            ForeColor = Color.White,
+            BackColor = Color.Transparent
         };
 
         _progress = new ProgressBar
         {
             Dock = DockStyle.Top,
-            Height = 22,
+            Height = 20,
             Style = ProgressBarStyle.Marquee,
             MarqueeAnimationSpeed = 30
         };
@@ -74,7 +76,7 @@ internal sealed class InstallerForm : Form
             Text = "Zatvori",
             Dock = DockStyle.Right,
             Width = 110,
-            Height = 32,
+            Height = 30,
             Enabled = false,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(0, 140, 200),
@@ -86,16 +88,18 @@ internal sealed class InstallerForm : Form
         var buttonRow = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 40
+            Height = 34,
+            BackColor = Color.Transparent
         };
         buttonRow.Controls.Add(_closeButton);
 
-        footer.Controls.Add(buttonRow);
-        footer.Controls.Add(_progress);
-        footer.Controls.Add(_statusLabel);
+        _overlay.Controls.Add(buttonRow);
+        _overlay.Controls.Add(_progress);
+        _overlay.Controls.Add(_statusLabel);
 
-        Controls.Add(footer);
-        Controls.Add(_logoBox);
+        // Logo ispunjava ceo prozor; overlay statusa je preko donjeg dela.
+        Controls.Add(_overlay);
+        Controls.Add(logoBox);
     }
 
     public void SetStatus(string text)
@@ -161,7 +165,6 @@ internal sealed class InstallerForm : Form
 
             try
             {
-                // Ne zaključavaj fajl — učitaj u memoriju.
                 using var fs = File.OpenRead(path);
                 return Image.FromStream(fs);
             }
@@ -187,7 +190,7 @@ internal sealed class InstallerForm : Form
         }
         catch
         {
-            // Bez logoa — tamna pozadina (boja forme), ne crni flash.
+            // Bez logoa.
         }
 
         return null;

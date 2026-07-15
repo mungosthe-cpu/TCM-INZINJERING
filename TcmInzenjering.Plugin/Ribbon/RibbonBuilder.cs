@@ -6,8 +6,7 @@ using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 namespace TcmInzenjering.Plugin.Ribbon;
 
 /// <summary>
-/// CGS Labs stil: hub tab (TCM-INŽINJERING) sa modulom SITUACIJA;
-/// klik na SITUACIJA aktivira sekundarni tab sa alatima.
+/// CGS Labs stil: hub tab TCM-INŽINJERING (SITUACIJA, Poduzni profil) + sekundarni tabovi.
 /// </summary>
 internal static class RibbonBuilder
 {
@@ -16,6 +15,9 @@ internal static class RibbonBuilder
 
     public const string SituacijaTabId = "TCM_SITUACIJA_TAB";
     public const string SituacijaTabTitle = "Situacija";
+
+    public const string PoduzniProfilTabId = "TCM_PODUZNI_PROFIL_TAB";
+    public const string PoduzniProfilTabTitle = "Poduzni profil";
 
     private const string FeaturedAppsTitle = "Featured Apps";
 
@@ -27,27 +29,35 @@ internal static class RibbonBuilder
             return;
         }
 
+        TryEnableNativeRibbonIconSize();
+
         RemoveTab(ribbon, TabId);
         RemoveTab(ribbon, SituacijaTabId);
+        RemoveTab(ribbon, PoduzniProfilTabId);
 
         var hub = BuildHubTab();
         var situacija = BuildSituacijaTab();
+        var poduzni = BuildPoduzniProfilTab();
 
         InsertTabNearFeaturedApps(ribbon, hub);
-        // Situacija odmah iza hub taba (kao Plateia → Situacija kod CGS-a).
         var hubIndex = IndexOfTab(ribbon, TabId);
         if (hubIndex >= 0)
         {
             ribbon.Tabs.Insert(hubIndex + 1, situacija);
+            ribbon.Tabs.Insert(hubIndex + 2, poduzni);
         }
         else
         {
             ribbon.Tabs.Add(situacija);
+            ribbon.Tabs.Add(poduzni);
         }
     }
 
-    /// <summary>Aktivira sekundarni tab Situacija (poziva se kada korisnik klikne SITUACIJA).</summary>
-    public static void ActivateSituacijaTab()
+    public static void ActivateSituacijaTab() => ActivateSecondaryTab(SituacijaTabId);
+
+    public static void ActivatePoduzniProfilTab() => ActivateSecondaryTab(PoduzniProfilTabId);
+
+    private static void ActivateSecondaryTab(string tabId)
     {
         var ribbon = ComponentManager.Ribbon;
         if (ribbon is null)
@@ -55,11 +65,11 @@ internal static class RibbonBuilder
             return;
         }
 
-        var tab = ribbon.FindTab(SituacijaTabId);
+        var tab = ribbon.FindTab(tabId);
         if (tab is null)
         {
             CreateOrRefreshRibbonTab();
-            tab = ribbon.FindTab(SituacijaTabId);
+            tab = ribbon.FindTab(tabId);
         }
 
         if (tab is not null)
@@ -79,6 +89,7 @@ internal static class RibbonBuilder
 
         RemoveTab(ribbon, TabId);
         RemoveTab(ribbon, SituacijaTabId);
+        RemoveTab(ribbon, PoduzniProfilTabId);
     }
 
     private static RibbonTab BuildHubTab()
@@ -89,22 +100,49 @@ internal static class RibbonBuilder
             Title = TabTitle
         };
 
-        // Kao "CGS Labs produkti" — za sad samo jedan modul.
-        AddPanel(tab, "Moduli",
+        AddPanel(tab, "SITUACIJA",
             CreateModuleButton(
                 "SITUACIJA",
                 "Otvara alate za situacioni plan (osovina, stacionaza, teren...).",
-                "situacija"));
+                "situacija",
+                SituacijaTabId,
+                new SituacijaModuleHandler()));
 
-        // Kao "Aktivacija i ažuriranje" / pomoć.
-        AddPanel(tab, "Info i nadogradnja",
-            CreateCommandButton("Verzija", "Info o programu.", "TCMINFO ", "info"),
-            CreateCommandButton("Nadogradnja", "Provera nove verzije.", "TCMUPDATE ", "refresh"));
+        AddPanel(tab, "PODUZNI PROFIL",
+            CreateModuleButton(
+                "PODUZNI PROFIL",
+                "Otvara alate za poduzni profil (jos u pripremi).",
+                "poduzni_profil",
+                PoduzniProfilTabId,
+                new PoduzniProfilModuleHandler()));
 
-        AddPanel(tab, "Alati",
-            CreateCommandButton("Podesavanja", "Font ispisa stacionaze.", "TCMSTACFONT ", "toolspace"),
-            CreateCommandButton("Osvezi Ribbon", "Ponovo kreira ribbon tabove.", "TCMRIBBON ", "ribbon"),
-            CreateCommandButton("Deinstaliraj", "Brise plugin iz AutoCAD-a.", "TCMUNINSTALL ", "uninstall"));
+        AddPanel(tab, "INFO",
+            CreateLargeCommandButton(
+                "INFO",
+                "Info o programu i verziji.",
+                "info",
+                "TCMINFO "));
+
+        AddPanel(tab, "PODESAVANJA",
+            CreateLargeCommandButton(
+                "PODESAVANJA",
+                "Font ispisa stacionaze i ostale opcije.",
+                "podesavanja",
+                "TCMSTACFONT "));
+
+        AddPanel(tab, "NADOGRADNJA",
+            CreateLargeCommandButton(
+                "NADOGRADNJA",
+                "Provera nove verzije.",
+                "nadogradnja",
+                "TCMUPDATE "));
+
+        AddPanel(tab, "DEINSTALACIJA",
+            CreateLargeCommandButton(
+                "DEINSTALACIJA",
+                "Brise plugin iz AutoCAD-a.",
+                "deinstalacija",
+                "TCMUNINSTALL "));
 
         return tab;
     }
@@ -115,7 +153,6 @@ internal static class RibbonBuilder
         {
             Id = SituacijaTabId,
             Title = SituacijaTabTitle,
-            // Kao CGS: sekundarni tab se pojavi tek kad korisnik klikne modul.
             IsVisible = false
         };
 
@@ -140,24 +177,177 @@ internal static class RibbonBuilder
         return tab;
     }
 
-    private static void AddPanel(RibbonTab tab, string panelTitle, params RibbonButton[] buttons)
+    /// <summary>Prazan tab — stavke za poduzni profil jos nisu definisane.</summary>
+    private static RibbonTab BuildPoduzniProfilTab()
+    {
+        var tab = new RibbonTab
+        {
+            Id = PoduzniProfilTabId,
+            Title = PoduzniProfilTabTitle,
+            IsVisible = false
+        };
+
+        AddPanel(tab, "Profil",
+            CreatePlaceholderButton("Uskoro", "Komande poduznog profila jos nisu dostupne."));
+
+        AddPanel(tab, "Oznake",
+            CreatePlaceholderButton("Uskoro", "Oznake poduznog profila — u pripremi."));
+
+        AddPanel(tab, "Tabele",
+            CreatePlaceholderButton("Uskoro", "Tabele poduznog profila — u pripremi."));
+
+        return tab;
+    }
+
+    private static void AddPanel(RibbonTab tab, string panelTitle, params RibbonItem[] items)
     {
         var panelSource = new RibbonPanelSource { Title = panelTitle };
-        foreach (var button in buttons)
+        foreach (var item in items)
         {
-            panelSource.Items.Add(button);
+            panelSource.Items.Add(item);
         }
 
         tab.Panels.Add(new RibbonPanel { Source = panelSource });
     }
 
-    private static RibbonButton CreateModuleButton(string text, string description, string iconName)
+    private static RibbonButton CreateModuleButton(
+        string text,
+        string description,
+        string iconName,
+        string tabId,
+        ICommand handler)
     {
-        var button = CreateButtonBase(text, description, iconName);
-        button.Id = "TCM_MODULE_" + iconName.ToUpperInvariant();
-        button.CommandHandler = new SituacijaModuleHandler();
-        button.CommandParameter = SituacijaTabId;
+        var button = new RibbonButton
+        {
+            Text = text,
+            Description = description,
+            ShowText = false,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            AllowInStatusBar = false,
+            AllowInToolBar = true,
+            Id = "TCM_MODULE_" + iconName.ToUpperInvariant(),
+            CommandHandler = handler,
+            CommandParameter = tabId,
+            ToolTip = new RibbonToolTip
+            {
+                Title = text,
+                Content = description
+            }
+        };
+
+        ApplyNativeSizedIcons(button, iconName);
         return button;
+    }
+
+    /// <summary>Velika ikona (_64) bez teksta na dugmetu — panel naslov nosi ime (kao moduli).</summary>
+    private static RibbonButton CreateLargeCommandButton(
+        string text,
+        string description,
+        string iconName,
+        string command)
+    {
+        var button = new RibbonButton
+        {
+            Text = text,
+            Description = description,
+            ShowText = false,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            AllowInStatusBar = false,
+            AllowInToolBar = true,
+            Id = "TCM_LARGE_" + iconName.ToUpperInvariant(),
+            CommandHandler = new RibbonCommandHandler(),
+            CommandParameter = command,
+            ToolTip = new RibbonToolTip
+            {
+                Title = text,
+                Content = description
+            }
+        };
+
+        ApplyNativeSizedIcons(button, iconName);
+        return button;
+    }
+
+    private static void ApplyNativeSizedIcons(RibbonButton button, string iconName)
+    {
+        var large = RibbonIconLoader.LoadNative($"{iconName}_64")
+                    ?? RibbonIconLoader.LoadNative($"{iconName}_48")
+                    ?? RibbonIconLoader.LoadNative($"{iconName}_32")
+                    ?? RibbonIconLoader.LoadNative(iconName)
+                    ?? RibbonIconLoader.LoadLarge(iconName);
+        var small = RibbonIconLoader.LoadNative($"{iconName}_16")
+                    ?? RibbonIconLoader.LoadSmall(iconName)
+                    ?? large;
+
+        if (large is not null)
+        {
+            button.LargeImage = large;
+        }
+
+        if (small is not null)
+        {
+            button.Image = small;
+        }
+    }
+
+    private static RibbonButton CreatePlaceholderButton(string text, string description)
+    {
+        var button = new RibbonButton
+        {
+            Text = text,
+            Description = description,
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            Id = "TCM_PLACEHOLDER_" + Math.Abs(description.GetHashCode()).ToString("X"),
+            CommandHandler = new PlaceholderCommandHandler(),
+            CommandParameter = description,
+            ToolTip = new RibbonToolTip
+            {
+                Title = text,
+                Content = description
+            }
+        };
+
+        var icon = RibbonIconLoader.LoadLarge("info")
+                   ?? RibbonIconLoader.LoadLarge("toolspace");
+        if (icon is not null)
+        {
+            button.LargeImage = icon;
+            button.Image = RibbonIconLoader.LoadSmall("info") ?? icon;
+        }
+
+        return button;
+    }
+
+    private static void TryEnableNativeRibbonIconSize()
+    {
+        try
+        {
+            var current = AcApp.GetSystemVariable("RIBBONICONRESIZE");
+            var value = current switch
+            {
+                short s => (int)s,
+                int i => i,
+                long l => (int)l,
+                double d => (int)d,
+                _ => 1
+            };
+
+            if (value != 0)
+            {
+                AcApp.SetSystemVariable("RIBBONICONRESIZE", 0);
+            }
+        }
+        catch
+        {
+            // Starije verzije bez sysvar-a.
+        }
     }
 
     private static RibbonButton CreateCommandButton(string text, string description, string command, string iconName)
@@ -256,7 +446,6 @@ internal static class RibbonBuilder
     }
 }
 
-/// <summary>Klik na SITUACIJA → aktivira sekundarni tab Situacija.</summary>
 internal sealed class SituacijaModuleHandler : ICommand
 {
     public event EventHandler? CanExecuteChanged;
@@ -264,6 +453,46 @@ internal sealed class SituacijaModuleHandler : ICommand
     public bool CanExecute(object? parameter) => true;
 
     public void Execute(object? parameter) => RibbonBuilder.ActivateSituacijaTab();
+
+    public void RaiseCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+internal sealed class PoduzniProfilModuleHandler : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter) => RibbonBuilder.ActivatePoduzniProfilTab();
+
+    public void RaiseCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+/// <summary>Placeholder dugme — samo obavestenje, bez komande.</summary>
+internal sealed class PlaceholderCommandHandler : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter)
+    {
+        var msg = parameter as string ?? "Ova funkcija jos nije dostupna.";
+        try
+        {
+            System.Windows.MessageBox.Show(
+                msg,
+                "TCM-INŽINJERING",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+        catch
+        {
+            // UI nije kritican.
+        }
+    }
 
     public void RaiseCanExecuteChanged() =>
         CanExecuteChanged?.Invoke(this, EventArgs.Empty);

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -26,6 +27,8 @@ internal static class Program
         {
             form.SetStatus($"TCM-INŽINJERING v{GetInstallerVersion()} — priprema…");
             form.SetProgress(5);
+
+            WaitForCadHostsIfNeeded(form);
 
             var sourceRoot = ResolvePayloadRoot();
             var autocadBundle = Path.Combine(sourceRoot, BundleFolderName);
@@ -197,6 +200,37 @@ internal static class Program
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         yield return Path.Combine(programFiles, "Bricsys", "ApplicationPlugins", BricsBundleFolderName);
+    }
+
+    private static void WaitForCadHostsIfNeeded(InstallerForm form)
+    {
+        static bool CadRunning() =>
+            Process.GetProcesses().Any(p =>
+            {
+                var n = p.ProcessName;
+                return n.Equals("acad", StringComparison.OrdinalIgnoreCase)
+                       || n.Equals("bricscad", StringComparison.OrdinalIgnoreCase);
+            });
+
+        if (!CadRunning())
+        {
+            return;
+        }
+
+        form.SetStatus(
+            "AutoCAD/BricsCAD je otvoren — instalacija čeka da ga zatvorite. " +
+            "Možete nastaviti rad; kad zatvorite program, kopiranje će početi samo.");
+        form.SetProgress(8);
+
+        while (CadRunning())
+        {
+            Application.DoEvents();
+            Thread.Sleep(1500);
+        }
+
+        // DLL handle se oslobađa kratko posle zatvaranja procesa.
+        Thread.Sleep(2000);
+        form.SetStatus("CAD program zatvoren — nastavljam instalaciju…");
     }
 
     private static string ResolvePayloadRoot()

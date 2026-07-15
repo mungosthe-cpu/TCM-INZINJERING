@@ -12,6 +12,7 @@ namespace TcmInzenjering.Plugin;
 /// <summary>
 /// Pokrece spoljasnji update proces (preuzimanje + progress bar + instalacija).
 /// Preuzimanje ne radi u AutoCAD procesu da UI ne izgleda "zamrznut".
+/// Instalacija se odlaze dok korisnik ne zatvori AutoCAD/BricsCAD.
 /// </summary>
 internal static class PluginUpdater
 {
@@ -43,9 +44,9 @@ internal static class PluginUpdater
             (string.IsNullOrWhiteSpace(result.ReleaseNotes)
                 ? string.Empty
                 : "Novo u ovoj verziji:" + Environment.NewLine + result.ReleaseNotes + Environment.NewLine + Environment.NewLine) +
-            "Preuzimanje ce ici u posebnom prozoru (sa progress bar-om), tako da AutoCAD nece biti blokiran." +
+            "Preuzimanje ide u posebnom prozoru — AutoCAD mozete nastaviti da koristite." +
             Environment.NewLine + Environment.NewLine +
-            "Nakon preuzimanja zatvorite AutoCAD da bi se instalacija zavrsila." +
+            "Kad zatvorite AutoCAD, instalacija ce se automatski zavrsiti." +
             Environment.NewLine + Environment.NewLine +
             "Nastaviti?",
             "TCM-INZINJERING - Nadogradnja",
@@ -87,8 +88,9 @@ internal static class PluginUpdater
             Process.Start(start);
 
             message =
-                "Pokrenut je prozor preuzimanja (progress bar). AutoCAD mozete nastaviti da koristite. " +
-                "Kada se zavrsi preuzimanje, zatvorite AutoCAD — instalacija ce se pokrenuti automatski.";
+                "Pokrenut je prozor preuzimanja. Nastavite rad u AutoCAD-u." +
+                Environment.NewLine +
+                "Instalacija ce se automatski zavrsiti kada zatvorite AutoCAD (nema potrebe da ga gasite odmah).";
             return true;
         }
         catch (Exception ex)
@@ -108,6 +110,7 @@ $ErrorActionPreference = "Stop"
 $title = "TCM-INZINJERING - Nadogradnja"
 $metaPath = '{{escapedMeta}}'
 $nl = [Environment]::NewLine
+$script:CancelWait = $false
 
 function Show-Msg([string]$msg, [string]$icon = "Info") {
   $boxIcon = switch ($icon) {
@@ -140,27 +143,28 @@ $url = [string]$meta.DownloadUrl
 $notes = [string]$meta.ReleaseNotes
 $setup = [string]$meta.SetupPath
 
-# --- Progress window (logo umesto crnog ekrana) ---
+# --- Full-bleed logo + overlay status ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = $title
-$form.Size = New-Object System.Drawing.Size(720, 420)
+$form.ClientSize = New-Object System.Drawing.Size(720, 480)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
-$form.MinimizeBox = $false
-$form.TopMost = $true
+$form.MinimizeBox = $true
+$form.TopMost = $false
 $form.ShowInTaskbar = $true
 $form.BackColor = [System.Drawing.Color]::FromArgb(12, 28, 56)
 
 $logoPaths = @(
   (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\TcmInzenjering.bundle\Contents\net8\Icons\TCM Logo.png"),
   (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\TcmInzenjering.bundle\Contents\net48\Icons\TCM Logo.png"),
+  (Join-Path $env:LOCALAPPDATA "Autodesk\ApplicationPlugins\TcmInzenjering.bundle\Contents\net8\Icons\TCM Logo.png"),
   (Join-Path $PSScriptRoot "TCM Logo.png")
 )
+
 $pic = New-Object System.Windows.Forms.PictureBox
-$pic.Dock = "Top"
-$pic.Height = 260
-$pic.SizeMode = "Zoom"
+$pic.Dock = "Fill"
+$pic.SizeMode = "StretchImage"
 $pic.BackColor = $form.BackColor
 foreach ($lp in $logoPaths) {
   if (Test-Path -LiteralPath $lp) {
@@ -173,17 +177,22 @@ foreach ($lp in $logoPaths) {
   }
 }
 
+$overlay = New-Object System.Windows.Forms.Panel
+$overlay.Dock = "Bottom"
+$overlay.Height = 120
+$overlay.Padding = New-Object System.Windows.Forms.Padding(16, 10, 16, 10)
+$overlay.BackColor = [System.Drawing.Color]::FromArgb(200, 8, 20, 40)
+
 $label = New-Object System.Windows.Forms.Label
 $label.Dock = "Top"
 $label.Height = 36
-$label.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 0)
 $label.ForeColor = [System.Drawing.Color]::White
+$label.BackColor = [System.Drawing.Color]::Transparent
 $label.Text = "Preuzimanje TCM-INZINJERING v$version..."
 
 $bar = New-Object System.Windows.Forms.ProgressBar
 $bar.Dock = "Top"
-$bar.Height = 26
-$bar.Margin = New-Object System.Windows.Forms.Padding(16)
+$bar.Height = 22
 $bar.Minimum = 0
 $bar.Maximum = 100
 $bar.Style = "Continuous"
@@ -192,11 +201,45 @@ $bar.Value = 0
 $status = New-Object System.Windows.Forms.Label
 $status.Dock = "Top"
 $status.Height = 28
-$status.Padding = New-Object System.Windows.Forms.Padding(16, 6, 16, 0)
 $status.ForeColor = [System.Drawing.Color]::FromArgb(176, 212, 232)
+$status.BackColor = [System.Drawing.Color]::Transparent
 $status.Text = "Povezivanje..."
 
-$form.Controls.AddRange(@($status, $bar, $label, $pic))
+$cancelBtn = New-Object System.Windows.Forms.Button
+$cancelBtn.Text = "Otkazi"
+$cancelBtn.Width = 100
+$cancelBtn.Height = 28
+$cancelBtn.Dock = "Right"
+$cancelBtn.FlatStyle = "Flat"
+$cancelBtn.BackColor = [System.Drawing.Color]::FromArgb(0, 140, 200)
+$cancelBtn.ForeColor = [System.Drawing.Color]::White
+$cancelBtn.Visible = $false
+$cancelBtn.Add_Click({
+  $script:CancelWait = $true
+  $cancelBtn.Enabled = $false
+  $status.Text = "Otkazivanje..."
+})
+
+$btnRow = New-Object System.Windows.Forms.Panel
+$btnRow.Dock = "Bottom"
+$btnRow.Height = 32
+$btnRow.BackColor = [System.Drawing.Color]::Transparent
+$btnRow.Controls.Add($cancelBtn)
+
+$overlay.Controls.Add($btnRow)
+$overlay.Controls.Add($status)
+$overlay.Controls.Add($bar)
+$overlay.Controls.Add($label)
+
+$form.Controls.Add($overlay)
+$form.Controls.Add($pic)
+$form.Add_FormClosing({
+  param($sender, $e)
+  if ($cancelBtn.Visible -and -not $script:CancelWait) {
+    $script:CancelWait = $true
+  }
+})
+
 $form.Show()
 $form.Refresh()
 [System.Windows.Forms.Application]::DoEvents()
@@ -249,63 +292,83 @@ try {
   $status.Text = "Preuzimanje zavrseno."
   $label.Text = "Installer v$version je spreman."
   [System.Windows.Forms.Application]::DoEvents()
-  Start-Sleep -Milliseconds 400
 } catch {
   try { if (Test-Path -LiteralPath $setup) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue } } catch { }
-  $form.Close()
+  try { $form.Close() } catch { }
   Show-Msg ("Greska pri preuzimanju:" + $nl + $_.Exception.Message) "Error"
   exit 1
-} finally {
-  try { $form.Close() } catch { }
-  try { $form.Dispose() } catch { }
 }
 
 if (-not (Test-Path -LiteralPath $setup)) {
+  try { $form.Close() } catch { }
   Show-Msg ("Nije pronadjen preuzeti installer:" + $nl + $setup) "Error"
   exit 1
 }
 
-[System.Windows.Forms.MessageBox]::Show(
-  ("Installer v$version je preuzet." + $nl + $nl +
-   "Sacuvajte crteze i zatvorite AutoCAD/BricsCAD, zatim kliknite OK." + $nl + $nl +
-   "Instalacija ne moze da zameni DLL dok je program otvoren."),
-  $title,
-  [System.Windows.Forms.MessageBoxButtons]::OK,
-  [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+# --- Cekaj zatvaranje CAD-a u pozadini; korisnik moze da nastavi rad ---
+$running = Get-CadRunning
+if ($running.Count -gt 0) {
+  $label.Text = "Nadogradnja ceka zatvaranje AutoCAD-a"
+  $status.Text = "Nastavite rad u AutoCAD-u. Instalacija ce se automatski zavrsiti kad ga zatvorite."
+  $bar.Style = "Marquee"
+  $bar.MarqueeAnimationSpeed = 40
+  $cancelBtn.Visible = $true
+  $form.WindowState = "Minimized"
+  [System.Windows.Forms.Application]::DoEvents()
 
-while ($true) {
-  $running = Get-CadRunning
-  if ($running.Count -eq 0) { break }
-  $summary = ($running | Group-Object ProcessName | ForEach-Object { "$($_.Name).exe ($($_.Count))" }) -join ", "
-  $retry = [System.Windows.Forms.MessageBox]::Show(
-    ("Jos uvek je pokrenuto: $summary" + $nl + $nl + "Zatvorite CAD pa izaberite Retry."),
-    $title,
-    [System.Windows.Forms.MessageBoxButtons]::RetryCancel,
-    [System.Windows.Forms.MessageBoxIcon]::Warning)
-  if ($retry -eq [System.Windows.Forms.DialogResult]::Cancel) {
-    Show-Msg "Nadogradnja otkazana." "Warning"
+  Show-Msg (
+    "Installer v$version je preuzet." + $nl + $nl +
+    "Mozete nastaviti da radite u AutoCAD-u." + $nl + $nl +
+    "Instalacija ce se automatski zavrsiti kada zatvorite AutoCAD/BricsCAD." + $nl +
+    "(Nema potrebe da gasite program odmah.)" + $nl + $nl +
+    "Prozor nadogradnje ostaje u taskbaru dok ceka."
+  ) "Info"
+
+  $form.WindowState = "Minimized"
+  while (-not $script:CancelWait) {
+    $running = Get-CadRunning
+    if ($running.Count -eq 0) { break }
+    $names = ($running | Group-Object ProcessName | ForEach-Object { "$($_.Name).exe" }) -join ", "
+    $status.Text = "Cekam zatvaranje: $names  —  mozes nastaviti rad."
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 1500
+  }
+
+  if ($script:CancelWait) {
+    try { $form.Close() } catch { }
+    Show-Msg ("Nadogradnja otkazana." + $nl + $nl + "Installer ostaje ovde:" + $nl + $setup) "Warning"
     exit 1
   }
-  Start-Sleep -Milliseconds 800
 }
 
+$form.WindowState = "Normal"
+$form.Activate()
+$cancelBtn.Visible = $false
+$label.Text = "Instalacija u toku..."
+$status.Text = "AutoCAD je zatvoren. Kopiranje fajlova..."
+$bar.Style = "Marquee"
+$bar.MarqueeAnimationSpeed = 30
+[System.Windows.Forms.Application]::DoEvents()
 Start-Sleep -Seconds 2
 
 try {
   $p = Start-Process -FilePath $setup -ArgumentList "--silent" -PassThru -Wait
   if ($p.ExitCode -ne 0) {
+    try { $form.Close() } catch { }
     Show-Msg ("Instalacija nije uspela (exit $($p.ExitCode))." + $nl + "Pokrenite installer rucno:" + $nl + $setup) "Error"
     exit $p.ExitCode
   }
 
+  try { $form.Close() } catch { }
   $msg = "Uspesno instalirano: TCM-INZINJERING v$version"
   if ($current) { $msg += $nl + "Prethodna verzija: v$current" }
   if ($notes) {
     $msg += $nl + $nl + "Sta je novo:" + $nl + $notes
   }
-  $msg += $nl + $nl + "Pokrenite AutoCAD/BricsCAD ponovo."
+  $msg += $nl + $nl + "Pokrenite AutoCAD/BricsCAD ponovo da se ucita nova verzija."
   Show-Msg $msg "Info"
 } catch {
+  try { $form.Close() } catch { }
   Show-Msg ("Greska pri pokretanju instalera:" + $nl + $_.Exception.Message + $nl + $nl + $setup) "Error"
   exit 1
 }
