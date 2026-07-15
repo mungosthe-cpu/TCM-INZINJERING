@@ -236,10 +236,13 @@ internal static class TerrainProjector
         }
 
         var m = Math.Min(maxChordError, r * 0.5);
-        var ratio = Math.Clamp(1.0 - (m / r), -1.0, 1.0);
+        var ratio = Clamp(1.0 - (m / r), -1.0, 1.0);
         var theta = 2.0 * Math.Acos(ratio);
-        return Math.Clamp(r * theta, 0.05, 5.0);
+        return Clamp(r * theta, 0.05, 5.0);
     }
+
+    private static double Clamp(double value, double min, double max) =>
+        Math.Max(min, Math.Min(max, value));
 
     private static TerrainProjectionResult ElevateStations(
         RoadAxis axis,

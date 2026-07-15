@@ -135,7 +135,7 @@ public sealed partial class RoadCommands
         var structure = TerrainProjector.EstimateStructureStationCount(axis);
         var defaultCount = TerrainProjector.SuggestPointCount(axis);
 
-#if BRICSCAD
+#if NETFRAMEWORK || BRICSCAD
         return TryPromptSamplingOptionsCli(axis, edgeCrossings, structure, defaultCount, out options);
 #else
         try

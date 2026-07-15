@@ -33,7 +33,7 @@ internal sealed class TerrainMesh
         var spanX = triangles.Max(t => t.MaxX) - _originX;
         var spanY = triangles.Max(t => t.MaxY) - _originY;
         var autoCell = Math.Max(5.0, Math.Sqrt((spanX * spanY) / Math.Max(1, triangles.Count)));
-        _cellSize = Math.Clamp(cellSize > 0 ? cellSize : autoCell, 5.0, 200.0);
+        _cellSize = Clamp(cellSize > 0 ? cellSize : autoCell, 5.0, 200.0);
 
         _grid = new Dictionary<(int, int), List<int>>();
         for (var i = 0; i < triangles.Count; i++)
@@ -136,6 +136,9 @@ internal sealed class TerrainMesh
 
     private int CellX(double x) => (int)Math.Floor((x - _originX) / _cellSize);
     private int CellY(double y) => (int)Math.Floor((y - _originY) / _cellSize);
+
+    private static double Clamp(double value, double min, double max) =>
+        Math.Max(min, Math.Min(max, value));
 }
 
 internal static class TerrainMeshBuilder

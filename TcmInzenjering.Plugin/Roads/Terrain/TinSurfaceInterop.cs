@@ -17,8 +17,8 @@ internal static class TinSurfaceInterop
         }
 
         var typeName = entity.GetType().Name;
-        if (typeName.Contains("TinSurface", StringComparison.OrdinalIgnoreCase) ||
-            typeName.Contains("GridSurface", StringComparison.OrdinalIgnoreCase))
+        if (ContainsIgnoreCase(typeName, "TinSurface") ||
+            ContainsIgnoreCase(typeName, "GridSurface"))
         {
             return true;
         }
@@ -26,9 +26,9 @@ internal static class TinSurfaceInterop
         try
         {
             var rx = entity.GetRXClass()?.Name ?? string.Empty;
-            return rx.Contains("TinSurface", StringComparison.OrdinalIgnoreCase) ||
-                   rx.Contains("GridSurface", StringComparison.OrdinalIgnoreCase) ||
-                   rx.Contains("AeccDbSurface", StringComparison.OrdinalIgnoreCase);
+            return ContainsIgnoreCase(rx, "TinSurface") ||
+                   ContainsIgnoreCase(rx, "GridSurface") ||
+                   ContainsIgnoreCase(rx, "AeccDbSurface");
         }
         catch
         {
@@ -179,4 +179,7 @@ internal static class TinSurfaceInterop
             return Array.Empty<Point3d>();
         }
     }
+
+    private static bool ContainsIgnoreCase(string value, string fragment) =>
+        value.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0;
 }
