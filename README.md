@@ -1,18 +1,19 @@
-# TCM-INZINJERING - AutoCAD 2026 Plugin
+# TCM-INZINJERING - AutoCAD 2020–2026 Plugin
 
 Plugin koji dodaje **Ribbon tab "TCM-INZINJERING"** u AutoCAD, odmah pored **Featured Apps**.
 
 ## Sta dobijas
 
 - Novi tab na Ribbon-u (kao "Kobi Toolkit" na slici)
-- Dugmad koja pokrecu komande (`TCMHELLO`, `TCMINFO`, `TCMRIBBON`)
+- Dugmad koja pokrecu komande (`TCMHELLO`, `TCMINFO`, `TCMRIBBON`, teren, situacija…)
 - Automatsko ucitavanje pri startu AutoCAD-a
+- **Isti feature set** na AutoCAD **2024** (net48 Legacy) i **2026** (net8)
 
 ## Preduslovi
 
-1. **AutoCAD 2026** (instaliran)
+1. **AutoCAD 2020–2024** i/ili **AutoCAD 2025–2026**
 2. **Visual Studio 2022** sa workload-om ".NET desktop development"
-3. **.NET 8 SDK** (obavezno za AutoCAD 2026 plugin)
+3. **.NET 8 SDK** (za net8 build) + .NET Framework 4.8 targeting pack (za Legacy)
 
    ```powershell
    winget install Microsoft.DotNet.SDK.8
@@ -22,10 +23,12 @@ Plugin koji dodaje **Ribbon tab "TCM-INZINJERING"** u AutoCAD, odmah pored **Fea
 
 ```powershell
 cd "c:\Users\User\Desktop\AUTOCAD PROGRAMS"
-dotnet build TcmInzenjering.Plugin\TcmInzenjering.Plugin.csproj -c Release
+dotnet build TcmInzenjering.Plugin\TcmInzenjering.Plugin.csproj -c Release /p:DeployPlugin=true
 ```
 
-DLL se automatski kopira u `TcmInzenjering.bundle\Contents\`.
+Build uvek pravi **oba** DLL-a:
+- `Contents\net48\TcmInzenjering.Plugin.Legacy.dll` → AutoCAD/Civil **2020–2024**
+- `Contents\net8\TcmInzenjering.Plugin.dll` → AutoCAD/Civil **2025–2026**
 
 ## Instalacija u AutoCAD
 

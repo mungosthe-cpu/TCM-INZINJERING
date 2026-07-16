@@ -12,13 +12,13 @@ public sealed class UpdateCommands
 #if BRICSCAD
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         doc?.Editor.WriteMessage("\nTCM-INZINJERING: provera nadogradnje...");
-        UpdateUi.CheckAndNotify(owner: null);
-#else
-        // Rezultat u prozoru — bez ispisa u AutoCAD komandnoj liniji.
-        UpdateUi.CheckAndNotify(owner: null);
 #endif
+        UpdateUi.CheckAndNotify(owner: null);
     }
 
+    /// <summary>
+    /// Tiha provera na startu: ako postoji nova verzija, pita korisnika (jednom) da li da preuzme.
+    /// </summary>
     internal static void CheckForUpdatesOnStartup()
     {
         try
@@ -29,8 +29,21 @@ public sealed class UpdateCommands
                 return;
             }
 
-            // Tiha napomena na startu — bez komandne linije (korisnik pokreće TCMUPDATE ili Info).
-            _ = result;
+            // MessageBox mora sa AutoCAD UI threada (Idle), ne iz Task.Run.
+            void OnIdle(object? sender, EventArgs e)
+            {
+                AcApp.Idle -= OnIdle;
+                try
+                {
+                    UpdateUi.PromptAvailableUpdate(result);
+                }
+                catch
+                {
+                    // Provera nadogradnje ne sme da sreze start.
+                }
+            }
+
+            AcApp.Idle += OnIdle;
         }
         catch
         {

@@ -5,13 +5,14 @@
   ProductType="Application"
   Name="TCM-INZINJERING"
   Description="TCM-INZINJERING - putevi, osovina i stacionaza."
-  AppVersion="1.1.12">
+  AppVersion="1.1.13">
   <CompanyDetails
     Name="TCM-INZINJERING"
     Url="https://github.com/mungosthe-cpu/TCM-INZINJERING"
     Email="" />
 
-  <Components Description="AutoCAD 2020-2024 (.NET Framework)">
+  <!-- Shared command list must stay in sync for all Components blocks. -->
+  <Components Description="AutoCAD 2020-2024 (.NET Framework 4.8)">
     <RuntimeRequirements
       OS="Win64"
       Platform="AutoCAD*|AutoCAD"
@@ -21,20 +22,44 @@
       AppName="TcmInzenjering"
       AppType=".NET"
       ModuleName="./Contents/net48/TcmInzenjering.Plugin.Legacy.dll"
-      AppDescription="TCM-INZINJERING - putevi i osovina"
+      AppDescription="TCM-INZINJERING - putevi i osovina (AutoCAD 2020-2024)"
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
+        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
+        <Command Global="TCMPROJTER" Local="TCMPROJTER" />
+        <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />
+        <Command Global="TCMTERIZABERI" Local="TCMTERIZABERI" />
+        <Command Global="TCMTERDODAJ" Local="TCMTERDODAJ" />
+        <Command Global="TCMTERUCITAJ" Local="TCMTERUCITAJ" />
+        <Command Global="TCMTERUREDI" Local="TCMTERUREDI" />
+        <Command Global="TCMTERSNIMI" Local="TCMTERSNIMI" />
+        <Command Global="TCMTERBLOK" Local="TCMTERBLOK" />
+        <Command Global="TCMTERFACE" Local="TCMTERFACE" />
+        <Command Global="TCMTERADDLINE" Local="TCMTERADDLINE" />
+        <Command Global="TCMTERSWAP" Local="TCMTERSWAP" />
+        <Command Global="TCMTERBRISI" Local="TCMTERBRISI" />
+        <Command Global="TCMTERBREAK" Local="TCMTERBREAK" />
+        <Command Global="TCMTERBOUND" Local="TCMTERBOUND" />
+        <Command Global="TCMTEREDCLEAR" Local="TCMTEREDCLEAR" />
+        <Command Global="TCMTERIZOSET" Local="TCMTERIZOSET" />
+        <Command Global="TCMTERIZO" Local="TCMTERIZO" />
+        <Command Global="TCMTERIZOLBL" Local="TCMTERIZOLBL" />
+        <Command Global="TCMTERSPOT" Local="TCMTERSPOT" />
+        <Command Global="TCMTERSLOPE" Local="TCMTERSLOPE" />
+        <Command Global="TCMTERWSHD" Local="TCMTERWSHD" />
+        <Command Global="TCMPODCRT" Local="TCMPODCRT" />
+        <Command Global="TCMPODTAB" Local="TCMPODTAB" />
+        <Command Global="TCMPODTER" Local="TCMPODTER" />
         <Command Global="TCMRIBBON" Local="TCMRIBBON" />
         <Command Global="TCMHELLO" Local="TCMHELLO" />
         <Command Global="TCMINFO" Local="TCMINFO" />
         <Command Global="TCMUPDATE" Local="TCMUPDATE" />
-        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
-        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
-        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMUNINSTALL" Local="TCMUNINSTALL" />
       </Commands>
     </ComponentEntry>
@@ -50,20 +75,44 @@
       AppName="TcmInzenjering"
       AppType=".NET"
       ModuleName="./Contents/net8/TcmInzenjering.Plugin.dll"
-      AppDescription="TCM-INZINJERING - putevi i osovina"
+      AppDescription="TCM-INZINJERING - putevi i osovina (AutoCAD 2025-2026)"
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
+        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
+        <Command Global="TCMPROJTER" Local="TCMPROJTER" />
+        <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />
+        <Command Global="TCMTERIZABERI" Local="TCMTERIZABERI" />
+        <Command Global="TCMTERDODAJ" Local="TCMTERDODAJ" />
+        <Command Global="TCMTERUCITAJ" Local="TCMTERUCITAJ" />
+        <Command Global="TCMTERUREDI" Local="TCMTERUREDI" />
+        <Command Global="TCMTERSNIMI" Local="TCMTERSNIMI" />
+        <Command Global="TCMTERBLOK" Local="TCMTERBLOK" />
+        <Command Global="TCMTERFACE" Local="TCMTERFACE" />
+        <Command Global="TCMTERADDLINE" Local="TCMTERADDLINE" />
+        <Command Global="TCMTERSWAP" Local="TCMTERSWAP" />
+        <Command Global="TCMTERBRISI" Local="TCMTERBRISI" />
+        <Command Global="TCMTERBREAK" Local="TCMTERBREAK" />
+        <Command Global="TCMTERBOUND" Local="TCMTERBOUND" />
+        <Command Global="TCMTEREDCLEAR" Local="TCMTEREDCLEAR" />
+        <Command Global="TCMTERIZOSET" Local="TCMTERIZOSET" />
+        <Command Global="TCMTERIZO" Local="TCMTERIZO" />
+        <Command Global="TCMTERIZOLBL" Local="TCMTERIZOLBL" />
+        <Command Global="TCMTERSPOT" Local="TCMTERSPOT" />
+        <Command Global="TCMTERSLOPE" Local="TCMTERSLOPE" />
+        <Command Global="TCMTERWSHD" Local="TCMTERWSHD" />
+        <Command Global="TCMPODCRT" Local="TCMPODCRT" />
+        <Command Global="TCMPODTAB" Local="TCMPODTAB" />
+        <Command Global="TCMPODTER" Local="TCMPODTER" />
         <Command Global="TCMRIBBON" Local="TCMRIBBON" />
         <Command Global="TCMHELLO" Local="TCMHELLO" />
         <Command Global="TCMINFO" Local="TCMINFO" />
         <Command Global="TCMUPDATE" Local="TCMUPDATE" />
-        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
-        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
-        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMUNINSTALL" Local="TCMUNINSTALL" />
       </Commands>
     </ComponentEntry>
@@ -79,20 +128,44 @@
       AppName="TcmInzenjering"
       AppType=".NET"
       ModuleName="./Contents/net48/TcmInzenjering.Plugin.Legacy.dll"
-      AppDescription="TCM-INZINJERING - putevi i osovina"
+      AppDescription="TCM-INZINJERING - putevi i osovina (Civil 3D 2020-2024)"
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
+        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
+        <Command Global="TCMPROJTER" Local="TCMPROJTER" />
+        <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />
+        <Command Global="TCMTERIZABERI" Local="TCMTERIZABERI" />
+        <Command Global="TCMTERDODAJ" Local="TCMTERDODAJ" />
+        <Command Global="TCMTERUCITAJ" Local="TCMTERUCITAJ" />
+        <Command Global="TCMTERUREDI" Local="TCMTERUREDI" />
+        <Command Global="TCMTERSNIMI" Local="TCMTERSNIMI" />
+        <Command Global="TCMTERBLOK" Local="TCMTERBLOK" />
+        <Command Global="TCMTERFACE" Local="TCMTERFACE" />
+        <Command Global="TCMTERADDLINE" Local="TCMTERADDLINE" />
+        <Command Global="TCMTERSWAP" Local="TCMTERSWAP" />
+        <Command Global="TCMTERBRISI" Local="TCMTERBRISI" />
+        <Command Global="TCMTERBREAK" Local="TCMTERBREAK" />
+        <Command Global="TCMTERBOUND" Local="TCMTERBOUND" />
+        <Command Global="TCMTEREDCLEAR" Local="TCMTEREDCLEAR" />
+        <Command Global="TCMTERIZOSET" Local="TCMTERIZOSET" />
+        <Command Global="TCMTERIZO" Local="TCMTERIZO" />
+        <Command Global="TCMTERIZOLBL" Local="TCMTERIZOLBL" />
+        <Command Global="TCMTERSPOT" Local="TCMTERSPOT" />
+        <Command Global="TCMTERSLOPE" Local="TCMTERSLOPE" />
+        <Command Global="TCMTERWSHD" Local="TCMTERWSHD" />
+        <Command Global="TCMPODCRT" Local="TCMPODCRT" />
+        <Command Global="TCMPODTAB" Local="TCMPODTAB" />
+        <Command Global="TCMPODTER" Local="TCMPODTER" />
         <Command Global="TCMRIBBON" Local="TCMRIBBON" />
         <Command Global="TCMHELLO" Local="TCMHELLO" />
         <Command Global="TCMINFO" Local="TCMINFO" />
         <Command Global="TCMUPDATE" Local="TCMUPDATE" />
-        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
-        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
-        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMUNINSTALL" Local="TCMUNINSTALL" />
       </Commands>
     </ComponentEntry>
@@ -108,20 +181,44 @@
       AppName="TcmInzenjering"
       AppType=".NET"
       ModuleName="./Contents/net8/TcmInzenjering.Plugin.dll"
-      AppDescription="TCM-INZINJERING - putevi i osovina"
+      AppDescription="TCM-INZINJERING - putevi i osovina (Civil 3D 2025-2026)"
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
+        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
+        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
+        <Command Global="TCMPROJTER" Local="TCMPROJTER" />
+        <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />
+        <Command Global="TCMTERIZABERI" Local="TCMTERIZABERI" />
+        <Command Global="TCMTERDODAJ" Local="TCMTERDODAJ" />
+        <Command Global="TCMTERUCITAJ" Local="TCMTERUCITAJ" />
+        <Command Global="TCMTERUREDI" Local="TCMTERUREDI" />
+        <Command Global="TCMTERSNIMI" Local="TCMTERSNIMI" />
+        <Command Global="TCMTERBLOK" Local="TCMTERBLOK" />
+        <Command Global="TCMTERFACE" Local="TCMTERFACE" />
+        <Command Global="TCMTERADDLINE" Local="TCMTERADDLINE" />
+        <Command Global="TCMTERSWAP" Local="TCMTERSWAP" />
+        <Command Global="TCMTERBRISI" Local="TCMTERBRISI" />
+        <Command Global="TCMTERBREAK" Local="TCMTERBREAK" />
+        <Command Global="TCMTERBOUND" Local="TCMTERBOUND" />
+        <Command Global="TCMTEREDCLEAR" Local="TCMTEREDCLEAR" />
+        <Command Global="TCMTERIZOSET" Local="TCMTERIZOSET" />
+        <Command Global="TCMTERIZO" Local="TCMTERIZO" />
+        <Command Global="TCMTERIZOLBL" Local="TCMTERIZOLBL" />
+        <Command Global="TCMTERSPOT" Local="TCMTERSPOT" />
+        <Command Global="TCMTERSLOPE" Local="TCMTERSLOPE" />
+        <Command Global="TCMTERWSHD" Local="TCMTERWSHD" />
+        <Command Global="TCMPODCRT" Local="TCMPODCRT" />
+        <Command Global="TCMPODTAB" Local="TCMPODTAB" />
+        <Command Global="TCMPODTER" Local="TCMPODTER" />
         <Command Global="TCMRIBBON" Local="TCMRIBBON" />
         <Command Global="TCMHELLO" Local="TCMHELLO" />
         <Command Global="TCMINFO" Local="TCMINFO" />
         <Command Global="TCMUPDATE" Local="TCMUPDATE" />
-        <Command Global="TCMOSTAB" Local="TCMOSTAB" />
-        <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
-        <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMUNINSTALL" Local="TCMUNINSTALL" />
       </Commands>
     </ComponentEntry>

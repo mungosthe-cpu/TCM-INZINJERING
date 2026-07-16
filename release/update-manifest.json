@@ -1,5 +1,5 @@
 ﻿{
-    "Version":  "1.1.12",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.12.exe",
-    "ReleaseNotes":  "CGS ribbon hub (Situacija, Poduzni profil, Info, Podesavanja, Nadogradnja, Deinstalacija), Plo2Tan dialog na AutoCAD 2024, bolji izbor polilinije."
+    "Version":  "1.1.13",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.13.exe",
+    "ReleaseNotes":  "AutoCAD 2024+2026 dual build; teren filteri (Z=0, Z\u003c0, odstupanje); Add Line; Slope/Watershed; projekcija — izbor snimljenog terena."
 }

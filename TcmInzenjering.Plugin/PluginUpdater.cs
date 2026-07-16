@@ -2,9 +2,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
-#if !BRICSCAD
-using System.Windows;
-#endif
 using TcmInzenjering.Plugin.Update;
 
 namespace TcmInzenjering.Plugin;
@@ -36,29 +33,6 @@ internal static class PluginUpdater
             message = "Nije pronadjen EXE installer u manifestu. Otvorite GitHub Releases rucno.";
             return false;
         }
-
-#if !BRICSCAD
-        var answer = MessageBox.Show(
-            $"Dostupna je nova verzija {result.LatestVersion} (trenutna {result.CurrentVersion})." +
-            Environment.NewLine + Environment.NewLine +
-            (string.IsNullOrWhiteSpace(result.ReleaseNotes)
-                ? string.Empty
-                : "Novo u ovoj verziji:" + Environment.NewLine + result.ReleaseNotes + Environment.NewLine + Environment.NewLine) +
-            "Preuzimanje ide u posebnom prozoru — AutoCAD mozete nastaviti da koristite." +
-            Environment.NewLine + Environment.NewLine +
-            "Kad zatvorite AutoCAD, instalacija ce se automatski zavrsiti." +
-            Environment.NewLine + Environment.NewLine +
-            "Nastaviti?",
-            "TCM-INZINJERING - Nadogradnja",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question,
-            MessageBoxResult.Yes);
-        if (answer != MessageBoxResult.Yes)
-        {
-            message = "Nadogradnja otkazana.";
-            return false;
-        }
-#endif
 
         try
         {
@@ -143,7 +117,7 @@ $url = [string]$meta.DownloadUrl
 $notes = [string]$meta.ReleaseNotes
 $setup = [string]$meta.SetupPath
 
-# --- Full-bleed logo + overlay status ---
+# --- Full-bleed logo preko CELOG prozora; status overlay lezi PREKO (ne uzima Dock prostor) ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = $title
 $form.ClientSize = New-Object System.Drawing.Size(720, 480)
@@ -153,7 +127,7 @@ $form.MaximizeBox = $false
 $form.MinimizeBox = $true
 $form.TopMost = $false
 $form.ShowInTaskbar = $true
-$form.BackColor = [System.Drawing.Color]::FromArgb(12, 28, 56)
+$form.BackColor = [System.Drawing.Color]::FromArgb(8, 28, 72)
 
 $logoPaths = @(
   (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\TcmInzenjering.bundle\Contents\net8\Icons\TCM Logo.png"),
@@ -162,26 +136,24 @@ $logoPaths = @(
   (Join-Path $PSScriptRoot "TCM Logo.png")
 )
 
-$pic = New-Object System.Windows.Forms.PictureBox
-$pic.Dock = "Fill"
-$pic.SizeMode = "StretchImage"
-$pic.BackColor = $form.BackColor
 foreach ($lp in $logoPaths) {
   if (Test-Path -LiteralPath $lp) {
     try {
       $fs = [System.IO.File]::OpenRead($lp)
-      $pic.Image = [System.Drawing.Image]::FromStream($fs)
+      $form.BackgroundImage = [System.Drawing.Image]::FromStream($fs)
       $fs.Close()
+      $form.BackgroundImageLayout = "Stretch"
       break
     } catch { }
   }
 }
 
+$overlayH = 120
 $overlay = New-Object System.Windows.Forms.Panel
-$overlay.Dock = "Bottom"
-$overlay.Height = 120
+$overlay.Bounds = New-Object System.Drawing.Rectangle(0, ($form.ClientSize.Height - $overlayH), $form.ClientSize.Width, $overlayH)
+$overlay.Anchor = "Left,Right,Bottom"
 $overlay.Padding = New-Object System.Windows.Forms.Padding(16, 10, 16, 10)
-$overlay.BackColor = [System.Drawing.Color]::FromArgb(200, 8, 20, 40)
+$overlay.BackColor = [System.Drawing.Color]::FromArgb(180, 6, 18, 42)
 
 $label = New-Object System.Windows.Forms.Label
 $label.Dock = "Top"
@@ -232,7 +204,6 @@ $overlay.Controls.Add($bar)
 $overlay.Controls.Add($label)
 
 $form.Controls.Add($overlay)
-$form.Controls.Add($pic)
 $form.Add_FormClosing({
   param($sender, $e)
   if ($cancelBtn.Visible -and -not $script:CancelWait) {

@@ -7,14 +7,17 @@ alwaysApply: true
 
 Posle svake izmene koda plugina koji utice na DLL, uvek uradi sledece bez pitanja:
 
-1. Build projekta:
+1. Build **oba** targeta (AutoCAD 2024 = net48 Legacy + AutoCAD 2026 = net8):
 
 ```powershell
 cd "c:\Users\User\Desktop\AUTOCAD PROGRAMS"
 dotnet build TcmInzenjering.Plugin\TcmInzenjering.Plugin.csproj -c Release /p:DeployPlugin=true
 ```
 
-2. Bundle se automatski kopira u **tri** lokacije (AutoCAD 2026 ucitava iz AppData ili Program Files):
+   - `net48` → `Contents\net48\TcmInzenjering.Plugin.Legacy.dll` (Series **R23.1–R24.3**, AutoCAD/Civil 2020–2024)
+   - `net8.0-windows` → `Contents\net8\TcmInzenjering.Plugin.dll` (Series **R25.0–R25.1**, AutoCAD/Civil 2025–2026)
+
+2. Bundle se automatski kopira u **tri** lokacije (AppData / Program Files / ProgramData):
 
 ```
 %APPDATA%\Autodesk\ApplicationPlugins\TcmInzenjering.bundle\
@@ -22,7 +25,13 @@ C:\Program Files\Autodesk\ApplicationPlugins\TcmInzenjering.bundle\
 C:\ProgramData\Autodesk\ApplicationPlugins\TcmInzenjering.bundle\
 ```
 
-3. U `PackageContents.xml` mora biti `SeriesMin="R25.1"` i `SeriesMax="R25.1"` za AutoCAD 2026.
+3. U `PackageContents.xml` moraju postojati **oba** Components bloka sa istim spiskom komandi:
+   - AutoCAD/Civil 2020–2024: `SeriesMin="R23.1"` `SeriesMax="R24.3"` → net48 Legacy DLL
+   - AutoCAD/Civil 2025–2026: `SeriesMin="R25.0"` `SeriesMax="R25.1"` → net8 DLL
+
+4. Nove komande (`[CommandMethod]`) uvek dodaj u **sva** Components bloka u `PackageContents.xml` (AutoCAD + Civil, legacy + modern).
+
+5. Ne koristi `/p:SkipLegacy=true` osim ako korisnik eksplicitno trazi samo net8 build.
 
 Napomena: AutoCAD mora biti zatvoren tokom kopiranja da DLL ne bi bio zakljucan.
-Nakon toga korisnik restartuje AutoCAD 2026 da vidi tab **TCM-INZINJERING**.
+Nakon toga korisnik restartuje AutoCAD **2024** i/ili **2026** da vidi tab **TCM-INZINJERING**.

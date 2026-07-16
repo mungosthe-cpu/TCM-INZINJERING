@@ -1,0 +1,159 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.TerrainPointsSummaryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Oznacene tacke terena"
+        Height="540"
+        Width="780"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        MinHeight="420"
+        MinWidth="660"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,8">
+      <TextBlock x:Name="SummaryText" FontWeight="SemiBold" FontSize="13" TextWrapping="Wrap"/>
+      <TextBlock x:Name="DetailText" Margin="0,4,0,0" Foreground="#444" TextWrapping="Wrap"/>
+      <TextBlock x:Name="HintBanner" Margin="0,6,0,0" Padding="8,6" Background="#FFF3CD"
+                 Foreground="#664D03" TextWrapping="Wrap" Visibility="Collapsed"/>
+      <TextBlock x:Name="ProjectFolderText" Margin="0,4,0,0" Foreground="#555" FontSize="11"
+                 TextTrimming="CharacterEllipsis"/>
+      <Grid Margin="0,8,0,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="Imenovani teren:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+        <ComboBox Grid.Column="1" x:Name="NamedTerrainBox" Height="28" IsEditable="True"
+                  Margin="0,0,8,0" ToolTip="Izaberite sacuvani teren ili unesite novo ime za 3DFACE"/>
+        <Button Grid.Column="2" Content="Ucitaj teren" Width="110" Height="28" Click="OnLoadNamedTerrain"
+                ToolTip="Ucitava tacke sacuvanog terena u ovaj skupa"/>
+      </Grid>
+      <Border Margin="0,8,0,0" Padding="8,6" Background="#F3F6FA" BorderBrush="#CCD6E0" BorderThickness="1"
+              CornerRadius="3">
+        <StackPanel>
+          <TextBlock Text="Filter / oznaci tacke:" FontWeight="SemiBold" Margin="0,0,0,4"/>
+          <WrapPanel>
+            <CheckBox x:Name="FilterZZeroBox" Content="Z = 0" Margin="0,0,14,4"
+                      Checked="OnFilterChanged" Unchecked="OnFilterChanged"
+                      ToolTip="Oznaci / prikazi tacke sa visinom 0"/>
+            <CheckBox x:Name="FilterZNegBox" Content="Z &lt; 0" Margin="0,0,14,4"
+                      Checked="OnFilterChanged" Unchecked="OnFilterChanged"
+                      ToolTip="Oznaci / prikazi tacke sa negativnom visinom"/>
+            <CheckBox x:Name="FilterDevBox" Content="Odstupanje od proseka &gt;" VerticalAlignment="Center"
+                      Margin="0,0,6,4" Checked="OnFilterChanged" Unchecked="OnFilterChanged"
+                      ToolTip="Npr. prosek 100 i prag 5 → tacke ispod 95 i iznad 105"/>
+            <TextBox x:Name="FilterDevValueBox" Width="56" Height="24" Text="5" Margin="0,0,4,4"
+                     VerticalContentAlignment="Center"
+                     TextChanged="OnFilterDevTextChanged" LostFocus="OnFilterChanged"
+                     ToolTip="Prag u metrima (± od prosečne Z)"/>
+            <TextBlock Text="m" VerticalAlignment="Center" Margin="0,0,10,4"/>
+            <TextBlock x:Name="FilterInfoText" VerticalAlignment="Center" Foreground="#555" Margin="0,0,0,4"/>
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <DataGrid Grid.Row="1"
+              x:Name="PointsGrid"
+              AutoGenerateColumns="False"
+              IsReadOnly="False"
+              CanUserAddRows="False"
+              CanUserDeleteRows="False"
+              HeadersVisibility="Column"
+              SelectionMode="Single"
+              SelectionUnit="FullRow"
+              GridLinesVisibility="Horizontal"
+              AlternatingRowBackground="{x:Null}"
+              CellEditEnding="OnCellEditEnding">
+      <DataGrid.RowStyle>
+        <Style TargetType="DataGridRow">
+          <Setter Property="Background" Value="Transparent"/>
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding IsAdded}" Value="True">
+              <Setter Property="Background" Value="#D8F5D0"/>
+              <Setter Property="FontWeight" Value="SemiBold"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsMarkedZZero}" Value="True">
+              <Setter Property="Background" Value="#FFE8A3"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsMarkedZNegative}" Value="True">
+              <Setter Property="Background" Value="#FFC9C9"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsMarkedDeviation}" Value="True">
+              <Setter Property="Background" Value="#C9D8FF"/>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </DataGrid.RowStyle>
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="#" Binding="{Binding DisplayIndex}" Width="40" IsReadOnly="True"/>
+        <DataGridTextColumn Header="X" Binding="{Binding XText, UpdateSourceTrigger=LostFocus}" Width="*"/>
+        <DataGridTextColumn Header="Y" Binding="{Binding YText, UpdateSourceTrigger=LostFocus}" Width="*"/>
+        <DataGridTextColumn Header="Z" Binding="{Binding ZText, UpdateSourceTrigger=LostFocus}" Width="*"/>
+        <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="110" IsReadOnly="True"/>
+        <DataGridTemplateColumn Header="" Width="36" IsReadOnly="True">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <TextBlock Text="✎" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         ToolTip="Kliknite celiju X/Y/Z da izmenite vrednost" Foreground="#555"/>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <WrapPanel Grid.Row="2" Margin="0,10,0,0">
+      <Button x:Name="FolderIconButton"
+              Width="36" Height="28" Margin="0,0,8,0" Padding="0"
+              BorderThickness="0" Background="Transparent"
+              Cursor="Hand"
+              ToolTip="Folder projekta (default za snimanje / ucitavanje tacaka)"
+              Click="OnPickProjectFolder"
+              Focusable="False">
+        <Button.Template>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="Transparent" BorderThickness="0" Padding="0">
+              <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Button.Template>
+        <Viewbox Stretch="Uniform" Margin="1">
+          <Canvas Width="24" Height="18">
+            <Path Fill="#E8B84A"
+                  Data="M0,3 L9,3 L11,5 L24,5 L24,18 L0,18 Z"/>
+            <Path Fill="#F6D36A"
+                  Data="M0,6 L24,6 L24,18 L0,18 Z"/>
+          </Canvas>
+        </Viewbox>
+      </Button>
+      <Button Content="Dodaj tacku" Width="110" Height="28" Margin="0,0,8,0" Click="OnAddPoint"/>
+      <Button Content="Ukloni tacku" Width="110" Height="28" Margin="0,0,8,0" Click="OnRemovePoint"/>
+      <Button Content="3DFACE teren" Width="120" Height="28" Margin="0,0,8,0" Click="OnBuildTerrain"
+              ToolTip="Pravi TIN (3DFACE) i snima teren pod imenom"/>
+      <Button Content="Snimi tacke" Width="110" Height="28" Margin="0,0,8,0" Click="OnSavePoints"
+              ToolTip="Snima XYZ tacke (CSV) u folder projekta — bez DWG"/>
+      <Button Content="Ucitaj tacke" Width="110" Height="28" Margin="0,0,8,0" Click="OnLoadPoints"
+              ToolTip="Ucitava XYZ CSV/TXT u ovaj crtez"/>
+    </WrapPanel>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Content="Primeni" Width="96" Height="28" Click="OnApply" Margin="0,0,8,0"/>
+      <Button Content="OK" Width="96" Height="28" IsDefault="True" Click="OnOk" Margin="0,0,8,0"/>
+      <Button Content="Zatvori" Width="96" Height="28" IsCancel="True"/>
+    </StackPanel>
+  </Grid>
+</Window>

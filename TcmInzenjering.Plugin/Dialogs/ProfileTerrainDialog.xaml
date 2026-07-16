@@ -1,0 +1,112 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.ProfileTerrainDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Unos terena"
+        Height="720"
+        Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <GroupBox Header="Tabela" Padding="10,8" Margin="0,0,0,10">
+        <StackPanel>
+          <RadioButton x:Name="NewTableRadio" IsChecked="True" Content="Nova tabela" Margin="0,0,0,4"/>
+          <TextBox x:Name="TableNameBox" Margin="18,0,0,8" Height="24"/>
+          <TextBlock Text="Tip tabele" Margin="0,0,0,2"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="8"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="TableTypeBox" Height="24" IsEditable="False"/>
+            <Button Grid.Column="2" Content="Definisi..." Width="88" Height="24" Click="OnDefineTableType"/>
+          </Grid>
+        </StackPanel>
+      </GroupBox>
+
+      <GroupBox Header="Razmera" Padding="10,8" Margin="0,0,0,10">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="12"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0">
+            <TextBlock Text="Horizontalno" Margin="0,0,0,2"/>
+            <ComboBox x:Name="HScaleBox" Height="24" IsEditable="False"/>
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Text="Vertikalno" Margin="0,0,0,2"/>
+            <ComboBox x:Name="VScaleBox" Height="24" IsEditable="False"/>
+          </StackPanel>
+        </Grid>
+      </GroupBox>
+
+      <GroupBox Header="Ulazni podaci" Padding="10,8" Margin="0,0,0,10">
+        <StackPanel>
+          <TextBlock x:Name="SourceInfo" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="#333"/>
+          <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="12"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+              <TextBlock Text="Od stacionaže" Margin="0,0,0,2"/>
+              <TextBox x:Name="StartStationBox" Height="24"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Do stacionaže" Margin="0,0,0,2"/>
+              <TextBox x:Name="EndStationBox" Height="24"/>
+            </StackPanel>
+          </Grid>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="12"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+              <TextBlock Text="Referentna visina" Margin="0,0,0,2"/>
+              <TextBox x:Name="BaseElevBox" Height="24"/>
+              <TextBlock x:Name="MinElevHint" FontSize="11" Foreground="#666" Margin="0,2,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Visina vrha profila" Margin="0,0,0,2"/>
+              <TextBox x:Name="TopElevBox" Height="24"/>
+              <TextBlock x:Name="MaxElevHint" FontSize="11" Foreground="#666" Margin="0,2,0,0"/>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </GroupBox>
+
+      <GroupBox Header="Mogucnosti" Padding="10,8" Margin="0,0,0,4">
+        <StackPanel>
+          <CheckBox x:Name="TabulateCheck" Content="Tabeliranje" IsChecked="True" Margin="0,0,0,6"
+                    Checked="OnTabulateChanged" Unchecked="OnTabulateChanged"/>
+          <TextBlock Text="Nacin tabeliranja" Margin="0,0,0,2"/>
+          <ComboBox x:Name="ModeBox" Height="24" Margin="0,0,0,6" SelectionChanged="OnModeChanged"/>
+          <TextBlock x:Name="CrossHint" TextWrapping="Wrap" FontSize="11" Foreground="#555" Margin="0,0,0,6"/>
+          <TextBlock x:Name="IntervalLabel" Text="Fiksni interval" Margin="0,0,0,2"/>
+          <ComboBox x:Name="IntervalBox" Height="24" Margin="0,0,0,6" IsEditable="False"/>
+          <TextBlock x:Name="BetweenLabel" Text="Izmedju poprecnih osa" Margin="0,0,0,2" Visibility="Collapsed"/>
+          <ComboBox x:Name="BetweenBox" Height="24" Margin="0,0,0,6" Visibility="Collapsed" IsEditable="False"/>
+          <CheckBox x:Name="VerticalsCheck" Content="Crtanje vertikala" IsChecked="True"/>
+        </StackPanel>
+      </GroupBox>
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Content="OK" Width="88" Height="28" IsDefault="True" Click="OnOk" Margin="0,0,8,0"/>
+      <Button Content="Cancel" Width="88" Height="28" IsCancel="True" Click="OnCancel"/>
+    </StackPanel>
+  </Grid>
+</Window>

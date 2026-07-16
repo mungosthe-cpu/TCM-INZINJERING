@@ -2,7 +2,7 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
 using TcmInzenjering.Plugin.Dialogs;
 #endif
 using TcmInzenjering.Plugin.Roads.CrossAxis;
@@ -19,15 +19,15 @@ public sealed class CrossAxisCommandService
             return;
         }
 
-#if NET48
-        doc.Editor.WriteMessage("\nTCM-INZINJERING: Podesavanje poprecnih osa je dostupno u AutoCAD 2025+ verziji plugina.");
+#if BRICSCAD
+        doc.Editor.WriteMessage("\nTCM-INZINJERING: Podesavanje poprecnih osa nije dostupno u BricsCAD verziji.");
         return;
 #else
         RunDialogLoop(doc);
 #endif
     }
 
-#if NET8_0_OR_GREATER
+#if !BRICSCAD
     private static CrossAxisPlacementSettings? _pendingSettings;
     private static IReadOnlyList<long>? _pendingSelection;
     private static bool? _pendingLengthsEnabled;

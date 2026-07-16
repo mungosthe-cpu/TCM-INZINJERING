@@ -1,0 +1,512 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.ContourSettingsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Stil terena - Standard"
+        Height="640"
+        Width="820"
+        MinHeight="520"
+        MinWidth="700"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="10">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <TabControl x:Name="Tabs" Grid.Row="0">
+      <!-- Information -->
+      <TabItem Header="Information">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="140"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Name:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+            <TextBox Grid.Row="0" Grid.Column="1" x:Name="StyleNameBox" Height="26" Margin="0,0,0,8"/>
+            <TextBlock Grid.Row="1" Text="Description:" Margin="0,0,0,8"/>
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="DescBox" Height="80" AcceptsReturn="True"
+                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
+            <TextBlock Grid.Row="2" Text="Created by:" Margin="0,0,0,6"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="CreatedByLbl" Margin="0,0,0,6"/>
+            <TextBlock Grid.Row="3" Text="Last modified by:" Margin="0,0,0,6"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="ModifiedByLbl" Margin="0,0,0,6"/>
+            <TextBlock Grid.Row="4" Text="Date created:" Margin="0,0,0,6"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="DateCreatedLbl" Margin="0,0,0,6"/>
+            <TextBlock Grid.Row="5" Text="Date modified:"/>
+            <TextBlock Grid.Row="5" Grid.Column="1" x:Name="DateModifiedLbl"/>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Borders -->
+      <TabItem Header="Borders">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <StackPanel>
+            <GroupBox Header="3D Geometry" Padding="10" Margin="0,0,0,10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="220"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Border Display Mode:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <ComboBox Grid.Column="1" x:Name="BorderModeBox" Height="26" Margin="0,0,0,8"
+                          SelectionChanged="OnBorderModeChanged"/>
+                <TextBlock Grid.Row="1" Text="Flatten Borders to Elevation:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="BorderFlattenBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Exaggerate Borders by Scale Factor:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="BorderExagBox" Height="26"/>
+              </Grid>
+            </GroupBox>
+            <GroupBox Header="Border Types" Padding="10" Margin="0,0,0,10">
+              <StackPanel>
+                <CheckBox x:Name="ExtBorderBox" Content="Display Exterior Borders" Margin="0,0,0,6"/>
+                <CheckBox x:Name="IntBorderBox" Content="Display Interior Borders"/>
+              </StackPanel>
+            </GroupBox>
+            <GroupBox Header="Datum" Padding="10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="220"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <CheckBox Grid.ColumnSpan="2" x:Name="UseDatumBox" Content="Use Datum" Margin="0,0,0,8"
+                          Checked="OnDatumChanged" Unchecked="OnDatumChanged"/>
+                <TextBlock Grid.Row="1" Text="Project Grid to Datum:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="ProjectDatumBox" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Datum Elevation:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="DatumElevBox" Height="26"/>
+              </Grid>
+            </GroupBox>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Contours -->
+      <TabItem Header="Contours">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <StackPanel>
+            <Expander Header="Contour Ranges" IsExpanded="False" Margin="0,0,0,6">
+              <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="200"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Group Values By:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <ComboBox Grid.Column="1" x:Name="RangeGroupBox" Height="26" Margin="0,0,0,8">
+                  <ComboBoxItem Content="Contour interval"/>
+                  <ComboBoxItem Content="Range interval"/>
+                  <ComboBoxItem Content="Quantile"/>
+                </ComboBox>
+                <TextBlock Grid.Row="1" Text="Number of Ranges:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="RangeCountBox" Height="26"/>
+              </Grid>
+            </Expander>
+            <Expander Header="3D Geometry" IsExpanded="False" Margin="0,0,0,6">
+              <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="220"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Contour Display Mode:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <ComboBox Grid.Column="1" x:Name="ContourModeBox" Height="26" Margin="0,0,0,8"
+                          SelectionChanged="OnContourModeChanged"/>
+                <TextBlock Grid.Row="1" Text="Flatten Contours to Elevation:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="ContourFlattenBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Exaggerate Contours by Scale Factor:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="ContourExagBox" Height="26"/>
+              </Grid>
+            </Expander>
+            <Expander Header="Legend" IsExpanded="False" Margin="0,0,0,6">
+              <CheckBox x:Name="LegendBox" Content="Display Contour Legend" Margin="8"/>
+            </Expander>
+            <Expander Header="Contour Intervals" IsExpanded="True" Margin="0,0,0,6">
+              <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="180"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Base Elevation:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Column="1" x:Name="BaseBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="1" Text="Minor Interval:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="MinorBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Major Interval:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="MajorBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="3" Text="User Contours (m):" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="3" Grid.Column="1" x:Name="UserContoursBox" Height="26"
+                         ToolTip="Opcione kote odvojene zarezom, npr. 100; 105.5; 110"/>
+              </Grid>
+            </Expander>
+            <Expander Header="Contour Depressions" IsExpanded="False" Margin="0,0,0,6">
+              <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="200"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <CheckBox Grid.ColumnSpan="2" x:Name="DepressionBox" Content="Display Depression Contour Ticks"
+                          Margin="0,0,0,8" Checked="OnDepressionChanged" Unchecked="OnDepressionChanged"/>
+                <TextBlock Grid.Row="1" Text="Tick Mark Length:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="DepressionLenBox" Height="26"/>
+              </Grid>
+            </Expander>
+            <Expander Header="Contour Smoothing" IsExpanded="True" Margin="0,0,0,10">
+              <StackPanel Margin="8">
+                <CheckBox x:Name="SmoothBox" Content="Smooth Contours" Margin="0,0,0,8"
+                          Checked="OnSmoothChanged" Unchecked="OnSmoothChanged"/>
+                <StackPanel x:Name="SmoothPanel">
+                  <TextBlock Text="Smooth Type:" Margin="0,0,0,4"/>
+                  <ComboBox x:Name="SmoothTypeBox" Height="26" Margin="0,0,0,8">
+                    <ComboBoxItem Content="Add Vertices"/>
+                    <ComboBoxItem Content="Spline Curve"/>
+                  </ComboBox>
+                  <TextBlock Text="Contour smoothing" Margin="0,0,0,4"/>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Decrease" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Slider Grid.Column="1" x:Name="SmoothFactorSlider" Minimum="0" Maximum="100"
+                            TickFrequency="10" ValueChanged="OnSmoothFactorChanged"/>
+                    <TextBlock Grid.Column="2" Text="Increase" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                  </Grid>
+                  <TextBlock x:Name="SmoothFactorLbl" Text="50" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+                </StackPanel>
+              </StackPanel>
+            </Expander>
+
+            <TextBlock Text="Contour Display" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <TextBlock Text="Number" FontWeight="SemiBold" Margin="0,0,0,4"/>
+              <TextBlock Grid.Column="1" Text="Major Display" FontWeight="SemiBold" Margin="0,0,0,4"/>
+              <TextBlock Grid.Column="2" Text="Minor Display" FontWeight="SemiBold" Margin="0,0,0,4"/>
+              <TextBlock Grid.Row="1" Text="1" VerticalAlignment="Center"/>
+              <ComboBox Grid.Row="1" Grid.Column="1" x:Name="MajorDisplayLtBox" Height="26" Margin="0,0,8,0"
+                        IsEditable="True">
+                <ComboBoxItem Content="Continuous"/>
+                <ComboBoxItem Content="ByLayer"/>
+                <ComboBoxItem Content="ByBlock"/>
+                <ComboBoxItem Content="DASHED"/>
+                <ComboBoxItem Content="CENTER"/>
+              </ComboBox>
+              <ComboBox Grid.Row="1" Grid.Column="2" x:Name="MinorDisplayLtBox" Height="26" IsEditable="True">
+                <ComboBoxItem Content="Continuous"/>
+                <ComboBoxItem Content="ByLayer"/>
+                <ComboBoxItem Content="ByBlock"/>
+                <ComboBoxItem Content="DASHED"/>
+                <ComboBoxItem Content="CENTER"/>
+              </ComboBox>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Grid -->
+      <TabItem Header="Grid">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <StackPanel>
+            <GroupBox Header="3D Geometry" Padding="10" Margin="0,0,0,10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="220"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Grid Display Mode:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <ComboBox Grid.Column="1" x:Name="GridModeBox" Height="26" Margin="0,0,0,8"
+                          SelectionChanged="OnGridModeChanged"/>
+                <TextBlock Grid.Row="1" Text="Flatten Grid to Elevation:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="GridFlattenBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Exaggerate Grid by Scale Factor:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="GridExagBox" Height="26"/>
+              </Grid>
+            </GroupBox>
+            <GroupBox Header="Primary Grid" Padding="10" Margin="0,0,0,10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="180"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <CheckBox Grid.ColumnSpan="2" x:Name="PrimaryGridBox" Content="Use Primary Grid" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="1" Text="Interval:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="PrimaryIntBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Orientation (deg):" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="PrimaryOriBox" Height="26"/>
+              </Grid>
+            </GroupBox>
+            <GroupBox Header="Secondary Grid" Padding="10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="180"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <CheckBox Grid.ColumnSpan="2" x:Name="SecondaryGridBox" Content="Use Secondary Grid" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="1" Text="Interval:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="SecondaryIntBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Orientation (deg):" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="SecondaryOriBox" Height="26"/>
+              </Grid>
+            </GroupBox>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Points -->
+      <TabItem Header="Points">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <StackPanel>
+            <GroupBox Header="3D Geometry" Padding="10" Margin="0,0,0,10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="220"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Point Display Mode:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <ComboBox Grid.Column="1" x:Name="PointModeBox" Height="26" Margin="0,0,0,8"
+                          SelectionChanged="OnPointModeChanged"/>
+                <TextBlock Grid.Row="1" Text="Flatten Points to Elevation:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="PointFlattenBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Exaggerate Points by Scale Factor:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="PointExagBox" Height="26"/>
+              </Grid>
+            </GroupBox>
+            <GroupBox Header="Point Size" Padding="10" Margin="0,0,0,10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="180"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Point Scaling Method:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <ComboBox Grid.Column="1" x:Name="PointScaleMethodBox" Height="26" Margin="0,0,0,8" IsEditable="True">
+                  <ComboBoxItem Content="Size in absolute units"/>
+                  <ComboBoxItem Content="Size relative to screen"/>
+                  <ComboBoxItem Content="Use drawing scale"/>
+                </ComboBox>
+                <TextBlock Grid.Row="1" Text="Point Units:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="PointUnitsBox" Height="26"/>
+              </Grid>
+            </GroupBox>
+            <GroupBox Header="Point Display" Padding="10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="200"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Data Point Symbol:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Column="1" x:Name="DataSymBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="1" Text="Data Point Color (ACI):" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,8">
+                  <Button x:Name="DataColorBtn" Width="48" Height="24" Click="OnPickDataColor" Margin="0,0,8,0"/>
+                  <CheckBox x:Name="DataColorByLayerBox" Content="BYLAYER" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Grid.Row="2" Text="Derived Point Symbol:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="DerivedSymBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="3" Text="Derived Point Color (ACI):" VerticalAlignment="Center"/>
+                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal">
+                  <Button x:Name="DerivedColorBtn" Width="48" Height="24" Click="OnPickDerivedColor" Margin="0,0,8,0"/>
+                  <CheckBox x:Name="DerivedColorByLayerBox" Content="BYLAYER" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Grid>
+            </GroupBox>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Triangles -->
+      <TabItem Header="Triangles">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <GroupBox Header="3D Geometry" Padding="10">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <TextBlock Text="Triangle Display Mode:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+              <ComboBox Grid.Column="1" x:Name="TriangleModeBox" Height="26" Margin="0,0,0,8"
+                        SelectionChanged="OnTriangleModeChanged"/>
+              <TextBlock Grid.Row="1" Text="Flatten Triangles to Elevation:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+              <TextBox Grid.Row="1" Grid.Column="1" x:Name="TriangleFlattenBox" Height="26" Margin="0,0,0,8"/>
+              <TextBlock Grid.Row="2" Text="Exaggerate Triangles by Scale Factor:" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="2" Grid.Column="1" x:Name="TriangleExagBox" Height="26"/>
+            </Grid>
+          </GroupBox>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Watersheds -->
+      <TabItem Header="Watersheds">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <StackPanel>
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#555"
+                       Text="Watershed: tok vode po TIN-u ka depresiji / granici. Outline slivova na layeru TCM_WATERSHED. Vidljivost i boja i na Display → Watersheds."/>
+            <CheckBox x:Name="ShowWatershedsBox" Content="Show Watersheds analysis display" Margin="0,0,0,8"/>
+            <TextBlock Text="Komanda: TCMTERWSHD (ili Tin Surface → Watershed). Za isključenje: ugasite ovaj check / Display → Watersheds i Apply."
+                       TextWrapping="Wrap" Foreground="#666"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Analysis -->
+      <TabItem Header="Analysis">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+          <StackPanel>
+            <TextBlock Text="Surface analysis (Civil):" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            <CheckBox x:Name="AnalyzeDirBox" Content="Directions (flow arrows)" Margin="0,0,0,6"/>
+            <CheckBox x:Name="AnalyzeElevBox" Content="Elevations (color by Z)" Margin="0,0,0,6"/>
+            <CheckBox x:Name="AnalyzeSlopeBox" Content="Slopes (color by %)" Margin="0,0,0,6"/>
+            <CheckBox x:Name="AnalyzeArrowBox" Content="Slope Arrows" Margin="0,0,0,6"/>
+            <TextBlock TextWrapping="Wrap" Foreground="#666" Margin="0,12,0,0"
+                       Text="Slope: TCMTERSLOPE. Opsezi %: &lt;2 plavo … &gt;40 crveno. Display kartica sinkronizuje Visible. Apply / Izohipse osvežava analizu."/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- Display -->
+      <TabItem Header="Display">
+        <DockPanel Margin="10">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+            <TextBlock Text="View Direction:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox x:Name="ViewDirBox" Width="160" Height="26">
+              <ComboBoxItem Content="Plan"/>
+              <ComboBoxItem Content="Model"/>
+            </ComboBox>
+          </StackPanel>
+          <DataGrid x:Name="DisplayGrid"
+                    AutoGenerateColumns="False"
+                    CanUserAddRows="False"
+                    CanUserDeleteRows="False"
+                    HeadersVisibility="Column"
+                    SelectionMode="Single"
+                    GridLinesVisibility="Horizontal"
+                    RowHeight="30">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Component Type" Binding="{Binding ComponentType}" Width="140" IsReadOnly="True"/>
+              <DataGridCheckBoxColumn Header="Visible" Binding="{Binding Visible, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+              <DataGridTextColumn Header="Layer" Binding="{Binding Layer, UpdateSourceTrigger=LostFocus}" Width="120"/>
+              <DataGridTemplateColumn Header="Color" Width="110" IsReadOnly="True">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Button Padding="4,2" Margin="1" HorizontalContentAlignment="Left"
+                            Click="OnDisplayColorClick" Cursor="Hand"
+                            ToolTip="Klik — Select Color (kao Civil 3D)">
+                      <StackPanel Orientation="Horizontal">
+                        <Border Width="18" Height="14" BorderBrush="Gray" BorderThickness="1"
+                                Background="{Binding ColorBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ColorText}" VerticalAlignment="Center"/>
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Linetype" Binding="{Binding Linetype, UpdateSourceTrigger=LostFocus}" Width="100"/>
+              <DataGridTextColumn Header="LT Scale" Binding="{Binding LtScale, UpdateSourceTrigger=LostFocus}" Width="70"/>
+              <DataGridTextColumn Header="Lineweight" Binding="{Binding LineWeightText, UpdateSourceTrigger=LostFocus}" Width="90"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <!-- Summary -->
+      <TabItem Header="Summary">
+        <DockPanel Margin="10">
+          <TextBlock DockPanel.Dock="Top" Text="Pregled stil podešavanja" FontWeight="SemiBold" Margin="0,0,0,8"/>
+          <Button DockPanel.Dock="Top" Content="Osveži Summary" Width="140" HorizontalAlignment="Left"
+                  Margin="0,0,0,8" Click="OnRefreshSummary"/>
+          <TextBox x:Name="SummaryBox" IsReadOnly="True" TextWrapping="Wrap"
+                   VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"/>
+        </DockPanel>
+      </TabItem>
+    </TabControl>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Content="OK" Width="90" Height="28" IsDefault="True" Click="OnOk" Margin="0,0,8,0"/>
+      <Button Content="Cancel" Width="90" Height="28" IsCancel="True" Click="OnCancel" Margin="0,0,8,0"/>
+      <Button Content="Apply" Width="90" Height="28" Click="OnApply" Margin="0,0,8,0"/>
+      <Button Content="Help" Width="90" Height="28" Click="OnHelp"/>
+    </StackPanel>
+  </Grid>
+</Window>

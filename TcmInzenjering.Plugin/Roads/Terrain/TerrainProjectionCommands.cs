@@ -23,10 +23,9 @@ public sealed partial class RoadCommands
 
         try
         {
-            var terrainIds = SelectTerrainEntities(ed);
-            if (terrainIds.Count == 0)
+            if (!TryResolveTerrainForProjection(ed, db, out var terrainIds, out var terrainLabel))
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Nije izabran 3D teren (3DFACE / Mesh / Tin Surface).");
+                ed.WriteMessage("\nTCM-INZINJERING: Komanda otkazana / teren nije izabran.");
                 return;
             }
 
@@ -48,7 +47,7 @@ public sealed partial class RoadCommands
                 if (!terrain.HasTerrain)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: U selekciji nema validnog terena (Face/Mesh ili Civil Tin Surface).");
+                        "\nTCM-INZINJERING: U izabranom terenu nema validne geometrije (Face/Mesh ili Civil Tin Surface).");
                     tr.Commit();
                     return;
                 }
@@ -115,15 +114,246 @@ public sealed partial class RoadCommands
                     : $"preciznost {sampling.PointCount} tacaka";
 
                 ed.WriteMessage(
-                    $"\nTCM-INZINJERING: Projekcija ose '{axisName}' na teren — " +
-                    $"3D polilinija sa {projection.Points.Count} temena ({modeText}; hit {projection.HitCount}, miss {projection.MissCount}). " +
-                    $"Handle={(id.IsNull ? "?" : id.Handle)}.");
+                    $"\nTCM-INZINJERING: Projekcija ose '{axisName}' na teren{(string.IsNullOrWhiteSpace(terrainLabel) ? string.Empty : $" „{terrainLabel}“")} — " +
+                    $"3D polilinija sa {projection.Points.Count} temena ({modeText}; hit {projection.HitCount}, miss {projection.MissCount}).");
             }
         }
         catch (System.Exception ex)
         {
             ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Dijalog snimljenih terena ili pick jednog elementa u crtežu (vraca sve Face-ove tog modela).
+    /// </summary>
+    private static bool TryResolveTerrainForProjection(
+        Editor ed,
+        Database db,
+        out IReadOnlyList<ObjectId> terrainIds,
+        out string terrainLabel)
+    {
+        terrainIds = Array.Empty<ObjectId>();
+        terrainLabel = "";
+
+#if BRICSCAD
+        terrainIds = SelectTerrainEntities(ed);
+        return terrainIds.Count > 0;
+#else
+        while (true)
+        {
+            IReadOnlyList<string> names;
+            string? active;
+            using (var tr = db.TransactionManager.StartTransaction())
+            {
+                names = NamedTerrainSurfaceStore.ListNames(tr, db);
+                active = NamedTerrainSurfaceStore.GetActiveName(tr, db);
+                tr.Commit();
+            }
+
+            var sourceDlg = new TerrainProjectionSourceDialog(names, active);
+            var shown = AcApp.ShowModalWindow(sourceDlg) == true;
+
+            if (!shown || sourceDlg.CloseAction == TerrainProjectionSourceCloseAction.Cancelled)
+            {
+                return false;
+            }
+
+            if (sourceDlg.CloseAction == TerrainProjectionSourceCloseAction.PickInDrawing)
+            {
+                if (!TryPickTerrainElement(ed, db, out var pickedIds, out var label))
+                {
+                    // Povratak na dijalog.
+                    continue;
+                }
+
+                terrainIds = pickedIds;
+                terrainLabel = label;
+                return terrainIds.Count > 0;
+            }
+
+            // Confirmed from list.
+            var selectedName = sourceDlg.SelectedTerrainName;
+            if (string.IsNullOrWhiteSpace(selectedName))
+            {
+                continue;
+            }
+
+            using (var tr = db.TransactionManager.StartTransaction())
+            {
+                NamedTerrainSurfaceStore.ActivateSurface(tr, db, selectedName!, out _);
+                terrainIds = CollectTerrainEntityIds(tr, db, selectedName);
+                tr.Commit();
+            }
+
+            if (terrainIds.Count == 0)
+            {
+                ed.WriteMessage(
+                    $"\nTCM-INZINJERING: Teren „{selectedName}“ je snimljen, ali u crtežu nema 3DFACE. " +
+                    "Pokrenite TCMTERFACE da ga ponovo nacrtate.");
+                continue;
+            }
+
+            terrainLabel = selectedName!;
+            return true;
+        }
+#endif
+    }
+
+    private static bool TryPickTerrainElement(
+        Editor ed,
+        Database db,
+        out IReadOnlyList<ObjectId> terrainIds,
+        out string terrainLabel)
+    {
+        terrainIds = Array.Empty<ObjectId>();
+        terrainLabel = "";
+
+        var peo = new PromptEntityOptions(
+            "\nIzaberite jedan element terena (3DFACE / border / Civil Tin Surface) <Enter = nazad>: ")
+        {
+            AllowNone = true
+        };
+
+        var per = ed.GetEntity(peo);
+        if (per.Status != PromptStatus.OK)
+        {
+            return false;
+        }
+
+        using var tr = db.TransactionManager.StartTransaction();
+        if (tr.GetObject(per.ObjectId, OpenMode.ForRead) is not Entity entity)
+        {
+            tr.Commit();
+            return false;
+        }
+
+        // Civil Tin Surface — sama selekcija je dovoljna.
+        if (TinSurfaceInterop.IsTinSurface(entity))
+        {
+            terrainIds = new[] { per.ObjectId };
+            terrainLabel = "Civil Tin Surface";
+            tr.Commit();
+            return true;
+        }
+
+        string? surfaceName = null;
+        var isKnownTerrain =
+            TerrainFaceXData.IsTerrainFace(entity) ||
+            TerrainBorderXData.IsTerrainBorder(entity) ||
+            TerrainContourXData.IsContour(entity) ||
+            entity is Face or SubDMesh or PolyFaceMesh ||
+            string.Equals(entity.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(entity.Layer, TerrainBorderLayerName, StringComparison.OrdinalIgnoreCase);
+
+        if (!isKnownTerrain)
+        {
+            ed.WriteMessage(
+                "\nTCM-INZINJERING: To nije element terena. Kliknite 3DFACE, border ili Tin Surface (Enter = nazad na dijalog).");
+            tr.Commit();
+            return false;
+        }
+
+        if (TerrainFaceXData.IsTerrainFace(entity))
+        {
+            TerrainFaceXData.TryGetSurfaceName(entity, out surfaceName);
+        }
+        else if (TerrainBorderXData.IsTerrainBorder(entity))
+        {
+            TerrainBorderXData.TryGetSurfaceName(entity, out surfaceName);
+        }
+        else if (TerrainContourXData.IsContour(entity) ||
+                 string.Equals(entity.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(entity.Layer, TerrainBorderLayerName, StringComparison.OrdinalIgnoreCase))
+        {
+            surfaceName = NamedTerrainSurfaceStore.GetActiveName(tr, db);
+        }
+        else if (entity is SubDMesh or PolyFaceMesh)
+        {
+            // Samostalan mesh bez TCM markera — dovoljan je taj objekat.
+            terrainIds = new[] { per.ObjectId };
+            terrainLabel = entity.Layer;
+            tr.Commit();
+            return true;
+        }
+
+        surfaceName ??= NamedTerrainSurfaceStore.GetActiveName(tr, db);
+        if (!string.IsNullOrWhiteSpace(surfaceName))
+        {
+            NamedTerrainSurfaceStore.ActivateSurface(tr, db, surfaceName!, out _);
+            terrainIds = CollectTerrainEntityIds(tr, db, surfaceName);
+            terrainLabel = surfaceName!;
+        }
+        else
+        {
+            // Nema imena — svi TCM 3DFACE u crtežu.
+            terrainIds = CollectTerrainEntityIds(tr, db, surfaceName: null);
+            terrainLabel = "TCM teren";
+        }
+
+        tr.Commit();
+        return terrainIds.Count > 0;
+    }
+
+    /// <summary>
+    /// Skuplja 3DFACE (i opciono border) koji pripadaju snimljenom modelu.
+    /// Jedan Face sa imenom → ceo taj TIN model.
+    /// </summary>
+    private static IReadOnlyList<ObjectId> CollectTerrainEntityIds(
+        Transaction tr,
+        Database db,
+        string? surfaceName)
+    {
+        var ids = new List<ObjectId>();
+        var modelSpace = (BlockTableRecord)tr.GetObject(
+            SymbolUtilityServices.GetBlockModelSpaceId(db),
+            OpenMode.ForRead);
+
+        foreach (ObjectId id in modelSpace)
+        {
+            if (tr.GetObject(id, OpenMode.ForRead) is not Entity entity || entity.IsErased)
+            {
+                continue;
+            }
+
+            if (TerrainFaceXData.IsTerrainFace(entity) ||
+                (entity is Face &&
+                 string.Equals(entity.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (MatchesSurfaceName(entity, surfaceName, isFace: true))
+                {
+                    ids.Add(id);
+                }
+            }
+        }
+
+        return ids;
+    }
+
+    private static bool MatchesSurfaceName(Entity entity, string? surfaceName, bool isFace)
+    {
+        if (string.IsNullOrWhiteSpace(surfaceName))
+        {
+            return true;
+        }
+
+        string? name = null;
+        if (isFace)
+        {
+            TerrainFaceXData.TryGetSurfaceName(entity, out name);
+        }
+        else if (TerrainBorderXData.IsTerrainBorder(entity))
+        {
+            TerrainBorderXData.TryGetSurfaceName(entity, out name);
+        }
+
+        // Face bez imena (stari crtež) — uključi; novi Face-ovi imaju ime površine.
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return true;
+        }
+
+        return string.Equals(name, surfaceName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryPromptSamplingOptions(
@@ -135,7 +365,7 @@ public sealed partial class RoadCommands
         var structure = TerrainProjector.EstimateStructureStationCount(axis);
         var defaultCount = TerrainProjector.SuggestPointCount(axis);
 
-#if NETFRAMEWORK || BRICSCAD
+#if BRICSCAD
         return TryPromptSamplingOptionsCli(axis, edgeCrossings, structure, defaultCount, out options);
 #else
         try

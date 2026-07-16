@@ -20,7 +20,9 @@ internal static class PluginUninstaller
         var answer = MessageBox.Show(
             "Ovo ce potpuno obrisati TCM-INZINJERING iz AutoCAD/BricsCAD " +
             "(bundle, registry, lokalna podesavanja)." + Environment.NewLine + Environment.NewLine +
-            "Zatim zatvorite AutoCAD da bi se deinstalacija zavrsila." + Environment.NewLine + Environment.NewLine +
+            "Program ce zatraziti zatvaranje AutoCAD/BricsCAD-a " +
+            "(imacete mogucnost da sacuvate crteze)." + Environment.NewLine +
+            "Po zatvaranju, deinstalacija se nastavlja automatski." + Environment.NewLine + Environment.NewLine +
             "Nastaviti?",
             "TCM-INZINJERING - Deinstalacija",
             MessageBoxButton.YesNo,
@@ -43,9 +45,10 @@ internal static class PluginUninstaller
             var start = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Normal
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
             };
             Process.Start(start);
 
@@ -53,8 +56,8 @@ internal static class PluginUninstaller
             TryRemoveRibbonTab();
 #endif
             message =
-                "Pokrenut je deinstalacioni proces. Zatvorite AutoCAD/BricsCAD da bi se obrisali fajlovi " +
-                "(DLL je zakljucan dok je program otvoren).";
+                "Pokrenuta je deinstalacija. AutoCAD ce biti zatrazten da se zatvori " +
+                "(sacuvajte crteze ako se to trazi). Po zatvaranju, brisanje se nastavlja automatski.";
             return true;
         }
         catch (System.Exception ex)
@@ -89,12 +92,14 @@ internal static class PluginUninstaller
         // ASCII-safe skripta (encoding issues sa PS UTF-8 special chars).
         return """
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
+Add-Type -AssemblyName System.Drawing | Out-Null
 $ErrorActionPreference = "Continue"
 $appName = "TcmInzenjering"
 $bundleName = "TcmInzenjering.bundle"
 $bricsBundleName = "TcmInzenjering.BricsCAD.bundle"
 $title = "TCM-INZINJERING - Deinstalacija"
 $nl = [Environment]::NewLine
+$script:CancelWait = $false
 
 function Show-Msg([string]$msg, [string]$icon = "Info") {
   $boxIcon = switch ($icon) {
@@ -109,28 +114,159 @@ function Get-CadRunning {
   @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^(acad|bricscad)$' })
 }
 
-[System.Windows.Forms.MessageBox]::Show(
-  ("Zatvorite AutoCAD i BricsCAD (sacuvajte crteze), zatim kliknite OK." + $nl + $nl +
-   "Deinstalacija ne moze da obrise DLL dok je program otvoren."),
-  $title,
-  [System.Windows.Forms.MessageBoxButtons]::OK,
-  [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+function Request-CadClose {
+  $procs = Get-CadRunning
+  foreach ($p in $procs) {
+    try {
+      if (-not $p.HasExited) {
+        [void]$p.CloseMainWindow()
+      }
+    } catch { }
+  }
+  return $procs.Count
+}
 
-while ($true) {
-  $running = Get-CadRunning
-  if ($running.Count -eq 0) { break }
-  $summary = ($running | Group-Object ProcessName | ForEach-Object { "$($_.Name).exe ($($_.Count))" }) -join ", "
-  $retry = [System.Windows.Forms.MessageBox]::Show(
-    ("Jos uvek je pokrenuto: $summary" + $nl + $nl + "Zatvorite CAD pa izaberite Retry."),
-    $title,
-    [System.Windows.Forms.MessageBoxButtons]::RetryCancel,
-    [System.Windows.Forms.MessageBoxIcon]::Warning)
-  if ($retry -eq [System.Windows.Forms.DialogResult]::Cancel) {
+# --- Full-bleed logo UI (bez crnog PowerShell prozora) ---
+$form = New-Object System.Windows.Forms.Form
+$form.Text = $title
+$form.ClientSize = New-Object System.Drawing.Size(720, 480)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.MinimizeBox = $true
+$form.ShowInTaskbar = $true
+$form.TopMost = $true
+$form.BackColor = [System.Drawing.Color]::FromArgb(8, 28, 72)
+
+$logoPaths = @(
+  (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName\Contents\net8\Icons\TCM Logo.png"),
+  (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName\Contents\net48\Icons\TCM Logo.png"),
+  (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName\Contents\net8\Icons\TCM Logo.png"),
+  (Join-Path $env:ProgramData "Autodesk\ApplicationPlugins\$bundleName\Contents\net48\Icons\TCM Logo.png"),
+  "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName\Contents\net8\Icons\TCM Logo.png",
+  "C:\Program Files\Autodesk\ApplicationPlugins\$bundleName\Contents\net48\Icons\TCM Logo.png"
+)
+foreach ($lp in $logoPaths) {
+  if (Test-Path -LiteralPath $lp) {
+    try {
+      $fs = [System.IO.File]::OpenRead($lp)
+      $form.BackgroundImage = [System.Drawing.Image]::FromStream($fs)
+      $fs.Close()
+      $form.BackgroundImageLayout = "Stretch"
+      break
+    } catch { }
+  }
+}
+
+$overlayH = 120
+$overlay = New-Object System.Windows.Forms.Panel
+$overlay.Bounds = New-Object System.Drawing.Rectangle(0, ($form.ClientSize.Height - $overlayH), $form.ClientSize.Width, $overlayH)
+$overlay.Anchor = "Left,Right,Bottom"
+$overlay.Padding = New-Object System.Windows.Forms.Padding(16, 10, 16, 10)
+$overlay.BackColor = [System.Drawing.Color]::FromArgb(180, 6, 18, 42)
+
+$label = New-Object System.Windows.Forms.Label
+$label.Dock = "Top"
+$label.Height = 36
+$label.ForeColor = [System.Drawing.Color]::White
+$label.BackColor = [System.Drawing.Color]::Transparent
+$label.Text = "Deinstalacija TCM-INZINJERING..."
+
+$status = New-Object System.Windows.Forms.Label
+$status.Dock = "Top"
+$status.Height = 28
+$status.ForeColor = [System.Drawing.Color]::FromArgb(176, 212, 232)
+$status.BackColor = [System.Drawing.Color]::Transparent
+$status.Text = "Priprema..."
+
+$bar = New-Object System.Windows.Forms.ProgressBar
+$bar.Dock = "Top"
+$bar.Height = 22
+$bar.Style = "Marquee"
+$bar.MarqueeAnimationSpeed = 35
+
+$cancelBtn = New-Object System.Windows.Forms.Button
+$cancelBtn.Text = "Otkazi"
+$cancelBtn.Width = 100
+$cancelBtn.Height = 28
+$cancelBtn.Dock = "Right"
+$cancelBtn.FlatStyle = "Flat"
+$cancelBtn.BackColor = [System.Drawing.Color]::FromArgb(0, 140, 200)
+$cancelBtn.ForeColor = [System.Drawing.Color]::White
+$cancelBtn.Add_Click({
+  $script:CancelWait = $true
+  $cancelBtn.Enabled = $false
+  $status.Text = "Otkazivanje..."
+})
+
+$btnRow = New-Object System.Windows.Forms.Panel
+$btnRow.Dock = "Bottom"
+$btnRow.Height = 32
+$btnRow.BackColor = [System.Drawing.Color]::Transparent
+$btnRow.Controls.Add($cancelBtn)
+
+$overlay.Controls.Add($btnRow)
+$overlay.Controls.Add($status)
+$overlay.Controls.Add($bar)
+$overlay.Controls.Add($label)
+$form.Controls.Add($overlay)
+$form.Add_FormClosing({
+  param($sender, $e)
+  if (-not $script:CancelWait -and $cancelBtn.Visible) {
+    $script:CancelWait = $true
+  }
+})
+
+$form.Show()
+$form.Activate()
+$form.Refresh()
+[System.Windows.Forms.Application]::DoEvents()
+
+# 1) Zatrazi graceful close (dialog za Save u CAD-u)
+$running = Get-CadRunning
+if ($running.Count -gt 0) {
+  $label.Text = "Zatvaranje AutoCAD / BricsCAD"
+  $status.Text = "Otvara se upit za cuvanje crteza. Sacuvajte ili odbacite izmene."
+  [System.Windows.Forms.Application]::DoEvents()
+
+  Request-CadClose | Out-Null
+  Start-Sleep -Milliseconds 600
+  Request-CadClose | Out-Null
+
+  $lastNudge = [Environment]::TickCount
+  while (-not $script:CancelWait) {
+    $running = Get-CadRunning
+    if ($running.Count -eq 0) { break }
+
+    $names = ($running | Group-Object ProcessName | ForEach-Object { "$($_.Name).exe ($($_.Count))" }) -join ", "
+    $status.Text = "Cekam zatvaranje: $names — sacuvajte crteze ako se to trazi."
+    [System.Windows.Forms.Application]::DoEvents()
+
+    # Ponovi CloseMainWindow na svakih ~4s (ako je Save dialog otvoren, CAD ostaje dok korisnik ne odgovori).
+    $now = [Environment]::TickCount
+    if (($now - $lastNudge) -ge 4000) {
+      Request-CadClose | Out-Null
+      $lastNudge = $now
+    }
+
+    Start-Sleep -Milliseconds 800
+  }
+
+  if ($script:CancelWait) {
+    try { $form.Close() } catch { }
     Show-Msg "Deinstalacija otkazana." "Warning"
     exit 1
   }
-  Start-Sleep -Milliseconds 800
 }
+
+# 2) Kratka pauza da se DLL otkljuca
+$cancelBtn.Visible = $false
+$label.Text = "Brisanje plugina..."
+$status.Text = "CAD je zatvoren. Uklanjanje fajlova..."
+$bar.Style = "Marquee"
+$bar.MarqueeAnimationSpeed = 30
+[System.Windows.Forms.Application]::DoEvents()
+Start-Sleep -Seconds 2
 
 $removed = New-Object System.Collections.Generic.List[string]
 $failed = New-Object System.Collections.Generic.List[string]
@@ -166,7 +302,6 @@ function Remove-AppRegistry([string]$rootPath) {
         $failed.Add("$apps ($($_.Exception.Message))")
       }
     }
-    # BricsCAD: locale subkeys
     Get-ChildItem $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
       $nested = Join-Path $_.PSPath "Applications\$appName"
       if (Test-Path $nested) {
@@ -192,8 +327,18 @@ if ($removed.Count -gt 0) {
 if ($failed.Count -gt 0) {
   $lines = ($failed | Select-Object -First 8 | ForEach-Object { " - $_" }) -join $nl
   $msg += $nl + $nl + "Nije obrisano (dozvole?):" + $nl + $lines
+  $label.Text = "Deinstalacija delimicna"
+  $status.Text = "Neki fajlovi nisu obrisani."
+  [System.Windows.Forms.Application]::DoEvents()
+  try { $form.Close() } catch { }
   Show-Msg $msg "Warning"
 } else {
+  $label.Text = "Deinstalacija zavrsena"
+  $status.Text = "Plugin je uklonjen."
+  $bar.Style = "Continuous"
+  $bar.Value = 100
+  [System.Windows.Forms.Application]::DoEvents()
+  try { $form.Close() } catch { }
   Show-Msg $msg "Info"
 }
 

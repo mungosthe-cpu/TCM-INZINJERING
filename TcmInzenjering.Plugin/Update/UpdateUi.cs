@@ -47,6 +47,17 @@ internal static class UpdateUi
             return;
         }
 
+        PromptAvailableUpdate(result);
+    }
+
+    /// <summary>Jedna potvrda + pokretanje preuzimanja (bez drugog Yes/No u PluginUpdater).</summary>
+    public static void PromptAvailableUpdate(UpdateCheckResult result)
+    {
+        if (!result.UpdateAvailable)
+        {
+            return;
+        }
+
         var notes = string.IsNullOrWhiteSpace(result.ReleaseNotes)
             ? string.Empty
             : "\n\nNovo u ovoj verziji:\n" + result.ReleaseNotes;
@@ -55,7 +66,9 @@ internal static class UpdateUi
                 $"Dostupna je nova verzija {result.LatestVersion}.\n" +
                 $"Trenutna verzija: {result.CurrentVersion}." +
                 notes +
-                "\n\nPokrenuti preuzimanje i instalaciju?"))
+                "\n\nPreuzimanje ide u posebnom prozoru — AutoCAD možete nastaviti da koristite.\n" +
+                "Kad zatvorite AutoCAD, instalacija se automatski završava.\n\n" +
+                "Pokrenuti preuzimanje?"))
         {
             return;
         }
@@ -98,7 +111,22 @@ internal static class UpdateUi
     private static bool AskYesNo(string message)
     {
 #if BRICSCAD
-        return true;
+        var ed = Autodesk.AutoCAD.ApplicationServices.Core.Application.DocumentManager.MdiActiveDocument?.Editor;
+        if (ed is null)
+        {
+            return false;
+        }
+
+        var opts = new Autodesk.AutoCAD.EditorInput.PromptKeywordOptions("\n" + message.Replace('\n', ' ') + " [Da/Ne] <Ne>: ")
+        {
+            AllowNone = true
+        };
+        opts.Keywords.Add("Da");
+        opts.Keywords.Add("Ne");
+        opts.Keywords.Default = "Ne";
+        var res = ed.GetKeywords(opts);
+        return res.Status == Autodesk.AutoCAD.EditorInput.PromptStatus.OK &&
+               string.Equals(res.StringResult, "Da", StringComparison.OrdinalIgnoreCase);
 #else
         var result = _owner is not null
             ? MessageBox.Show(

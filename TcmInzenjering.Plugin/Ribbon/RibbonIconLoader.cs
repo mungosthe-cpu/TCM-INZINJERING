@@ -37,13 +37,21 @@ internal static class RibbonIconLoader
     {
         foreach (var directory in GetIconDirectories())
         {
-            var path = Path.Combine(directory, $"{iconName}.png");
-            if (!File.Exists(path))
+            // Prefer sized assets: dodaj_tacku_32.png, then dodaj_tacku.png
+            foreach (var fileName in new[] { $"{iconName}_{size}.png", $"{iconName}.png" })
             {
-                continue;
-            }
+                var path = Path.Combine(directory, fileName);
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
 
-            return LoadFromPath(path, size);
+                // Native size when exact asset exists; else decode to request.
+                int? decode = fileName.EndsWith($"_{size}.png", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : size;
+                return LoadFromPath(path, decode);
+            }
         }
 
         if (string.Equals(iconName, "toolspace", StringComparison.OrdinalIgnoreCase) ||

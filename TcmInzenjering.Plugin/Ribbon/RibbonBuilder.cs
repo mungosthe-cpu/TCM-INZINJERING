@@ -16,10 +16,18 @@ internal static class RibbonBuilder
     public const string SituacijaTabId = "TCM_SITUACIJA_TAB";
     public const string SituacijaTabTitle = "Situacija";
 
+    public const string TerenTabId = "TCM_TEREN_TAB";
+    public const string TerenTabTitle = "Teren";
+
     public const string PoduzniProfilTabId = "TCM_PODUZNI_PROFIL_TAB";
     public const string PoduzniProfilTabTitle = "Poduzni profil";
 
+    /// <summary>Civil kontekstualni tab — „Tin Surface: ime“.</summary>
+    public const string TinSurfaceTabId = "TCM_TIN_SURFACE_TAB";
+
     private const string FeaturedAppsTitle = "Featured Apps";
+
+    private static bool _hubResizeHooksAttached;
 
     public static void CreateOrRefreshRibbonTab()
     {
@@ -29,33 +37,135 @@ internal static class RibbonBuilder
             return;
         }
 
-        TryEnableNativeRibbonIconSize();
-
         RemoveTab(ribbon, TabId);
+        RemoveTab(ribbon, TerenTabId);
         RemoveTab(ribbon, SituacijaTabId);
         RemoveTab(ribbon, PoduzniProfilTabId);
+        RemoveTab(ribbon, TinSurfaceTabId);
+        _hubResizeHooksAttached = false;
 
         var hub = BuildHubTab();
+        var teren = BuildTerenTab();
         var situacija = BuildSituacijaTab();
         var poduzni = BuildPoduzniProfilTab();
+        var tinSurface = BuildTinSurfaceTab("Surface");
 
         InsertTabNearFeaturedApps(ribbon, hub);
         var hubIndex = IndexOfTab(ribbon, TabId);
         if (hubIndex >= 0)
         {
-            ribbon.Tabs.Insert(hubIndex + 1, situacija);
-            ribbon.Tabs.Insert(hubIndex + 2, poduzni);
+            ribbon.Tabs.Insert(hubIndex + 1, teren);
+            ribbon.Tabs.Insert(hubIndex + 2, situacija);
+            ribbon.Tabs.Insert(hubIndex + 3, poduzni);
+            ribbon.Tabs.Insert(hubIndex + 4, tinSurface);
         }
         else
         {
+            ribbon.Tabs.Add(teren);
             ribbon.Tabs.Add(situacija);
             ribbon.Tabs.Add(poduzni);
+            ribbon.Tabs.Add(tinSurface);
+        }
+
+        AttachRibbonIconResizeHooks(hub, teren, situacija, poduzni, tinSurface);
+        SyncRibbonIconResizeForActiveTab();
+    }
+
+    /// <summary>Civil: prikaži kontekstualni tab „Tin Surface: {name}“ i aktiviraj ga.</summary>
+    public static void ShowTinSurfaceTab(string surfaceName)
+    {
+        var ribbon = ComponentManager.Ribbon;
+        if (ribbon is null)
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(surfaceName) ? "Surface" : surfaceName.Trim();
+        var tab = ribbon.FindTab(TinSurfaceTabId);
+        if (tab is null)
+        {
+            CreateOrRefreshRibbonTab();
+            tab = ribbon.FindTab(TinSurfaceTabId);
+        }
+
+        if (tab is null)
+        {
+            return;
+        }
+
+        tab.Title = $"Tin Surface: {name}";
+        tab.IsVisible = true;
+        ribbon.ActiveTab = tab;
+    }
+
+    public static void HideTinSurfaceTab()
+    {
+        var ribbon = ComponentManager.Ribbon;
+        if (ribbon is null)
+        {
+            return;
+        }
+
+        var tab = ribbon.FindTab(TinSurfaceTabId);
+        if (tab is null)
+        {
+            return;
+        }
+
+        var wasActive = ReferenceEquals(ribbon.ActiveTab, tab);
+        tab.IsVisible = false;
+        if (!wasActive)
+        {
+            return;
+        }
+
+        // Vrati se na Teren modul ako je otvoren, inače hub.
+        var teren = ribbon.FindTab(TerenTabId);
+        if (teren is not null && teren.IsVisible)
+        {
+            ribbon.ActiveTab = teren;
+            return;
+        }
+
+        var hub = ribbon.FindTab(TabId);
+        if (hub is not null)
+        {
+            ribbon.ActiveTab = hub;
         }
     }
 
     public static void ActivateSituacijaTab() => ActivateSecondaryTab(SituacijaTabId);
 
+    public static void ActivateTerenTab() => ActivateSecondaryTab(TerenTabId);
+
     public static void ActivatePoduzniProfilTab() => ActivateSecondaryTab(PoduzniProfilTabId);
+
+    public static void CloseSituacijaTab() => CloseSecondaryTab(SituacijaTabId);
+
+    public static void CloseTerenTab() => CloseSecondaryTab(TerenTabId);
+
+    public static void ClosePoduzniProfilTab() => CloseSecondaryTab(PoduzniProfilTabId);
+
+    private static void CloseSecondaryTab(string tabId)
+    {
+        var ribbon = ComponentManager.Ribbon;
+        if (ribbon is null)
+        {
+            return;
+        }
+
+        var secondary = ribbon.FindTab(tabId);
+        if (secondary is not null)
+        {
+            secondary.IsVisible = false;
+        }
+
+        var hub = ribbon.FindTab(TabId);
+        if (hub is not null)
+        {
+            ribbon.ActiveTab = hub;
+        }
+    }
 
     private static void ActivateSecondaryTab(string tabId)
     {
@@ -88,8 +198,10 @@ internal static class RibbonBuilder
         }
 
         RemoveTab(ribbon, TabId);
+        RemoveTab(ribbon, TerenTabId);
         RemoveTab(ribbon, SituacijaTabId);
         RemoveTab(ribbon, PoduzniProfilTabId);
+        RemoveTab(ribbon, TinSurfaceTabId);
     }
 
     private static RibbonTab BuildHubTab()
@@ -100,10 +212,18 @@ internal static class RibbonBuilder
             Title = TabTitle
         };
 
+        AddPanel(tab, "TEREN",
+            CreateModuleButton(
+                "TEREN",
+                "Crtanje 3D terena od tacaka (3DFACE / TIN).",
+                "teren",
+                TerenTabId,
+                new TerenModuleHandler()));
+
         AddPanel(tab, "SITUACIJA",
             CreateModuleButton(
                 "SITUACIJA",
-                "Otvara alate za situacioni plan (osovina, stacionaza, teren...).",
+                "Otvara alate za situacioni plan (osovina, stacionaza...).",
                 "situacija",
                 SituacijaTabId,
                 new SituacijaModuleHandler()));
@@ -111,7 +231,7 @@ internal static class RibbonBuilder
         AddPanel(tab, "PODUZNI PROFIL",
             CreateModuleButton(
                 "PODUZNI PROFIL",
-                "Otvara alate za poduzni profil (jos u pripremi).",
+                "Otvara alate za poduzni profil (tabela + teren).",
                 "poduzni_profil",
                 PoduzniProfilTabId,
                 new PoduzniProfilModuleHandler()));
@@ -147,6 +267,172 @@ internal static class RibbonBuilder
         return tab;
     }
 
+    /// <summary>Civil Tin Surface kontekst — alati za selektovani imenovani teren.</summary>
+    private static RibbonTab BuildTinSurfaceTab(string surfaceName)
+    {
+        var tab = new RibbonTab
+        {
+            Id = TinSurfaceTabId,
+            Title = $"Tin Surface: {surfaceName}",
+            IsVisible = false
+        };
+
+        AddPanel(tab, "Modify",
+            CreateCommandButton(
+                "3DFACE / rebuild",
+                "Ponovo gradi TIN i border iz tacaka aktivnog terena.",
+                "TCMTERFACE ",
+                "projekcija"),
+            CreateCommandButton(
+                "Add Line",
+                "Civil Add Line — nova TIN ivica izmedju temena / duz linije.",
+                "TCMTERADDLINE ",
+                "osovina"),
+            CreateCommandButton(
+                "Swap 3DFACE",
+                "Zamenjuje zajednicku ivicu (Civil Swap Edge).",
+                "TCMTERSWAP ",
+                "osovina"),
+            CreateCommandButton(
+                "Brisi 3DFACE",
+                "Brise TIN ivice/trouglove.",
+                "TCMTERBRISI ",
+                "refresh"));
+
+        AddPanel(tab, "Analyze / Display",
+            CreateContourSplitButton(),
+            CreateCommandButton(
+                "Podesavanja stila",
+                "Civil Surface Style (Contours / Display / Borders…).",
+                "TCMTERIZOSET ",
+                "podesavanja"),
+            CreateCommandButton(
+                "Slope",
+                "Nagib (boje + strelice) na aktivnom TIN-u.",
+                "TCMTERSLOPE ",
+                "projekcija"),
+            CreateCommandButton(
+                "Watershed",
+                "Slivovi (watershed) na aktivnom TIN-u.",
+                "TCMTERWSHD ",
+                "info"),
+            CreateCommandButton(
+                "Kotne oznake",
+                "Kotna oznaka na izohipsi.",
+                "TCMTERIZOLBL ",
+                "staco"),
+            CreateCommandButton(
+                "Spot elevacija",
+                "Z na kliknutoj tacki terena.",
+                "TCMTERSPOT ",
+                "info"));
+
+        AddPanel(tab, "Teren",
+            CreateCommandButton(
+                "Tacke",
+                "Otvara dijalog tacaka / imenovanih terena.",
+                "TCMTERUREDI ",
+                "tcm_add_terrain_points"),
+            CreateModuleButton(
+                "Modul TEREN",
+                "Otvara pun Teren tab.",
+                "teren",
+                TerenTabId,
+                new TerenModuleHandler()));
+
+        return tab;
+    }
+
+    private static RibbonTab BuildTerenTab()
+    {
+        var tab = new RibbonTab
+        {
+            Id = TerenTabId,
+            Title = TerenTabTitle,
+            IsVisible = false
+        };
+
+        AddPanel(tab, "3D teren",
+            CreateTerrainPointsSplitButton(),
+            CreateCommandButton(
+                "3DFACE teren",
+                "Delaunay TIN — tacke + breakline + granica + sacuvani swap/delete.",
+                "TCMTERFACE ",
+                "projekcija"),
+            CreateCommandButton(
+                "Add Line",
+                "Civil Add Line — forsira TIN ivicu izmedju temena / duz linije.",
+                "TCMTERADDLINE ",
+                "osovina"),
+            CreateCommandButton(
+                "Swap 3DFACE",
+                "Zamenjuje zajednicku ivicu dva trougla (kao Civil 3D Swap Edge).",
+                "TCMTERSWAP ",
+                "osovina"),
+            CreateCommandButton(
+                "Brisi 3DFACE",
+                "Brise TIN ivice/trouglove (kao Civil 3D Delete Line).",
+                "TCMTERBRISI ",
+                "refresh"));
+
+        AddPanel(tab, "Definicija",
+            CreateCommandButton(
+                "Breakline",
+                "Polilinije kao obavezne TIN ivice (Civil/Plateia breakline).",
+                "TCMTERBREAK ",
+                "osovina"),
+            CreateCommandButton(
+                "Granica",
+                "Outer ili Hide granica terena (zatvorena polilinija).",
+                "TCMTERBOUND ",
+                "plo2tan"),
+            CreateCommandButton(
+                "Ocisti TIN edit",
+                "Brise sacuvane swap/delete operacije (breakline/granica ostaju).",
+                "TCMTEREDCLEAR ",
+                "refresh"));
+
+        AddPanel(tab, "Projekcija",
+            CreateCommandButton(
+                "Projekcija na teren",
+                "Projektuje osovinu na 3D teren (Face/Mesh/Tin Surface).",
+                "TCMPROJTER ",
+                "projekcija"));
+
+        AddPanel(tab, "Izohipse",
+            CreateContourSplitButton(),
+            CreateCommandButton(
+                "Kotne oznake",
+                "Dodaje kotnu oznaku na izabranu izohipsu.",
+                "TCMTERIZOLBL ",
+                "staco"),
+            CreateCommandButton(
+                "Spot elevacija",
+                "Prikazuje Z na kliknutoj tacki terena.",
+                "TCMTERSPOT ",
+                "info"));
+
+        AddPanel(tab, "Analiza",
+            CreateCommandButton(
+                "Slope",
+                "Boji 3DFACE po nagibu i crta strelice padine (Civil Slope).",
+                "TCMTERSLOPE ",
+                "projekcija"),
+            CreateCommandButton(
+                "Watershed",
+                "Crta slivove (watershed) na TIN-u — tok ka suncu depresije / granici.",
+                "TCMTERWSHD ",
+                "info"));
+
+        AddPanel(tab, "Zatvori",
+            CreateCloseButton(
+                "Zatvori",
+                "Zatvara tab Teren i vraca na TCM-INŽINJERING.",
+                new CloseTerenHandler()));
+
+        return tab;
+    }
+
     private static RibbonTab BuildSituacijaTab()
     {
         var tab = new RibbonTab
@@ -171,13 +457,16 @@ internal static class RibbonBuilder
         AddPanel(tab, "Poprecne ose",
             CreateCommandButton("Pozicija pop. osa", "Polozaj oznaka i stacionaza.", "TCMPOPOSPOZ ", "staco"));
 
-        AddPanel(tab, "Test",
-            CreateCommandButton("Test plugin", "Provera da li je plugin ucitan.", "TCMHELLO ", "hello"));
+        AddPanel(tab, "Zatvori",
+            CreateCloseButton(
+                "Zatvori",
+                "Zatvara tab Situacija i vraca na TCM-INŽINJERING.",
+                new CloseSituacijaHandler()));
 
         return tab;
     }
 
-    /// <summary>Prazan tab — stavke za poduzni profil jos nisu definisane.</summary>
+    /// <summary>Podužni profil — tabela + teren iz projektovane nivelete (Plateia stil).</summary>
     private static RibbonTab BuildPoduzniProfilTab()
     {
         var tab = new RibbonTab
@@ -188,13 +477,27 @@ internal static class RibbonBuilder
         };
 
         AddPanel(tab, "Profil",
-            CreatePlaceholderButton("Uskoro", "Komande poduznog profila jos nisu dostupne."));
+            CreateCommandButton(
+                "Tabela + teren",
+                "CGSA Unos terena: dijalog, grafik i banderola (OZNAKE/STAC/KOTE TERENA).",
+                "TCMPODCRT ",
+                "poduzni_profil"),
+            CreateCommandButton(
+                "Tabela profila",
+                "Isto kao Unos terena (kompletan poduzni view).",
+                "TCMPODTAB ",
+                "info"),
+            CreateCommandButton(
+                "Teren u profil",
+                "Ponovo crta samo zeleni teren u postojeci profil.",
+                "TCMPODTER ",
+                "projekcija"));
 
-        AddPanel(tab, "Oznake",
-            CreatePlaceholderButton("Uskoro", "Oznake poduznog profila — u pripremi."));
-
-        AddPanel(tab, "Tabele",
-            CreatePlaceholderButton("Uskoro", "Tabele poduznog profila — u pripremi."));
+        AddPanel(tab, "Zatvori",
+            CreateCloseButton(
+                "Zatvori",
+                "Zatvara tab Poduzni profil i vraca na TCM-INŽINJERING.",
+                new ClosePoduzniProfilHandler()));
 
         return tab;
     }
@@ -208,6 +511,192 @@ internal static class RibbonBuilder
         }
 
         tab.Panels.Add(new RibbonPanel { Source = panelSource });
+    }
+
+    /// <summary>
+    /// Civil Contours stil: Crtaj izohipse + Podešavanja (intervali, smooth, boje).
+    /// </summary>
+    private static RibbonSplitButton CreateContourSplitButton()
+    {
+        const string icon = "tcm_draw_contours";
+        var split = new RibbonSplitButton
+        {
+            Id = "TCM_TERRAIN_CONTOURS",
+            Text = "Izohipse",
+            Description = "Izohipse iz TCM TIN-a — crtanje i stil (Civil Surface Style).",
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            IsSplit = true,
+            IsSynchronizedWithCurrentItem = false,
+            ListButtonStyle = Autodesk.Private.Windows.RibbonListButtonStyle.SplitButton
+        };
+
+        var crtaj = CreateSplitMenuCommand(
+            "Crtaj izohipse",
+            "Crta major/minor/user izohipse prema stilu terena.",
+            "TCMTERIZO ",
+            icon);
+        var podesavanja = CreateSplitMenuCommand(
+            "Podesavanja",
+            "Civil Surface Style: Contours, Display, Borders, Grid, Points…",
+            "TCMTERIZOSET ",
+            "podesavanja");
+
+        split.Items.Add(crtaj);
+        split.Items.Add(new RibbonSeparator());
+        split.Items.Add(podesavanja);
+        split.Current = crtaj;
+
+        var large = RibbonIconLoader.LoadNative($"{icon}_32")
+                    ?? RibbonIconLoader.LoadLarge(icon)
+                    ?? RibbonIconLoader.LoadLarge("projekcija");
+        var small = RibbonIconLoader.LoadNative($"{icon}_16")
+                    ?? RibbonIconLoader.LoadSmall(icon)
+                    ?? large;
+        if (large is not null)
+        {
+            split.LargeImage = large;
+        }
+
+        if (small is not null)
+        {
+            split.Image = small;
+        }
+
+        split.ToolTip = new RibbonToolTip
+        {
+            Title = "Izohipse",
+            Content = "Crtaj izohipse / Podešavanja (Civil Surface Style)."
+        };
+
+        return split;
+    }
+
+    /// <summary>
+    /// Civil Points stil: veliko dugme + padajuci meni (ikona tcm_add_terrain_points).
+    /// </summary>
+    private static RibbonSplitButton CreateTerrainPointsSplitButton()
+    {
+        const string icon = "tcm_add_terrain_points";
+        var split = new RibbonSplitButton
+        {
+            Id = "TCM_ADD_TERRAIN_POINTS",
+            Text = "Tacke",
+            Description = "Tacke terena — izbor, blokovi, ucitavanje i snimanje (kao Civil Points).",
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            IsSplit = true,
+            IsSynchronizedWithCurrentItem = false,
+            ListButtonStyle = Autodesk.Private.Windows.RibbonListButtonStyle.SplitButton
+        };
+
+        var izaberi = CreateSplitMenuCommand(
+            "Izaberi tacke",
+            "Izabira tacke iz crteza i zamenjuje trenutni skup terena.",
+            "TCMTERIZABERI ",
+            icon);
+        var dodaj = CreateSplitMenuCommand(
+            "Dodaj tacke",
+            "Dodaje nove tacke u postojeci skup terena.",
+            "TCMTERDODAJ ",
+            icon);
+        var dodajBlok = CreateSplitMenuCommand(
+            "Dodaj tacku kao blok",
+            "Jedan blok = sablon: atribut = Z, pa obelezavanje istih blokova kao tacke terena.",
+            "TCMTERBLOK ",
+            icon);
+        var ucitaj = CreateSplitMenuCommand(
+            "Ucitaj tacke",
+            "Ucitava XYZ CSV/TXT u ovaj crtez (folder projekta).",
+            "TCMTERUCITAJ ",
+            icon);
+        var uredi = CreateSplitMenuCommand(
+            "Uredi tacke",
+            "Otvara prozor tacaka (pregled / izmena) bez novog izbora.",
+            "TCMTERUREDI ",
+            "podesavanja");
+        var snimi = CreateSplitMenuCommand(
+            "Snimi tacke",
+            "Snima XYZ tacke (CSV) u folder projekta.",
+            "TCMTERSNIMI ",
+            "refresh");
+
+        split.Items.Add(izaberi);
+        split.Items.Add(dodaj);
+        split.Items.Add(dodajBlok);
+        split.Items.Add(ucitaj);
+        split.Items.Add(new RibbonSeparator());
+        split.Items.Add(uredi);
+        split.Items.Add(snimi);
+
+        // Glavni klik = Izaberi tacke; strelica otvara meni.
+        split.Current = izaberi;
+
+        var large = RibbonIconLoader.LoadNative($"{icon}_32")
+                    ?? RibbonIconLoader.LoadLarge(icon)
+                    ?? RibbonIconLoader.LoadNative($"{icon}_48")
+                    ?? RibbonIconLoader.LoadNative($"{icon}_64")
+                    ?? RibbonIconLoader.LoadLarge("dodaj_tacku");
+        var small = RibbonIconLoader.LoadNative($"{icon}_16")
+                    ?? RibbonIconLoader.LoadSmall(icon)
+                    ?? large;
+        if (large is not null)
+        {
+            split.LargeImage = large;
+        }
+
+        if (small is not null)
+        {
+            split.Image = small;
+        }
+
+        split.ToolTip = new RibbonToolTip
+        {
+            Title = "Tacke terena",
+            Content = "Izaberi / Dodaj / Blok / Ucitaj / Uredi / Snimi."
+        };
+
+        return split;
+    }
+
+    private static RibbonButton CreateSplitMenuCommand(
+        string text,
+        string description,
+        string command,
+        string iconName)
+    {
+        var button = new RibbonButton
+        {
+            Text = text,
+            Description = description,
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Standard,
+            Id = "TCM_SPLIT_" + Math.Abs(command.GetHashCode()).ToString("X"),
+            CommandHandler = new RibbonCommandHandler(),
+            CommandParameter = command,
+            ToolTip = new RibbonToolTip
+            {
+                Title = text,
+                Content = description
+            }
+        };
+
+        var icon = RibbonIconLoader.LoadSmall(iconName)
+                   ?? RibbonIconLoader.LoadLarge(iconName)
+                   ?? RibbonIconLoader.LoadNative($"{iconName}_16")
+                   ?? RibbonIconLoader.LoadNative($"{iconName}_32");
+        if (icon is not null)
+        {
+            button.Image = icon;
+            button.LargeImage = RibbonIconLoader.LoadLarge(iconName) ?? icon;
+        }
+
+        return button;
     }
 
     private static RibbonButton CreateModuleButton(
@@ -272,6 +761,124 @@ internal static class RibbonBuilder
         return button;
     }
 
+    private static RibbonButton CreateCloseButton(string text, string description, ICommand handler)
+    {
+        // ShowText=false: naslov panela je „Zatvori“ — bez duplog teksta ispod ikone.
+        var button = new RibbonButton
+        {
+            Text = text,
+            Description = description,
+            ShowText = false,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            AllowInStatusBar = false,
+            AllowInToolBar = true,
+            Id = "TCM_CLOSE_TAB",
+            CommandHandler = handler,
+            ToolTip = new RibbonToolTip
+            {
+                Title = text,
+                Content = description
+            }
+        };
+
+        ApplyNativeSizedIcons(button, "tcm_close");
+        return button;
+    }
+
+    /// <summary>
+    /// Hub TCM-INŽINJERING: RIBBONICONRESIZE=0 (lepe TCM ikone).
+    /// Bilo koji drugi tab (TCM moduli ili AutoCAD/CGSA): vrati 1.
+    /// </summary>
+    internal static void SyncRibbonIconResizeForActiveTab()
+    {
+        try
+        {
+            var ribbon = ComponentManager.Ribbon;
+            var hubActive = ribbon?.ActiveTab is not null &&
+                            string.Equals(ribbon.ActiveTab.Id, TabId, StringComparison.OrdinalIgnoreCase);
+            SetRibbonIconResize(hubActive ? 0 : 1);
+        }
+        catch
+        {
+            SetRibbonIconResize(1);
+        }
+    }
+
+    /// <summary>Kompatibilnost: van hub taba uvek default AutoCAD (=1).</summary>
+    internal static void RestoreAutoCadRibbonIconResizeDefault() => SetRibbonIconResize(1);
+
+    private static void AttachRibbonIconResizeHooks(params RibbonTab[] tabs)
+    {
+        if (_hubResizeHooksAttached)
+        {
+            return;
+        }
+
+        foreach (var tab in tabs)
+        {
+            if (tab is null)
+            {
+                continue;
+            }
+
+            tab.Activated -= OnTcmRibbonTabActivated;
+            tab.Deactivated -= OnTcmRibbonTabDeactivated;
+            tab.Activated += OnTcmRibbonTabActivated;
+            tab.Deactivated += OnTcmRibbonTabDeactivated;
+        }
+
+        _hubResizeHooksAttached = true;
+    }
+
+    private static void OnTcmRibbonTabActivated(object? sender, EventArgs e) =>
+        SyncRibbonIconResizeForActiveTab();
+
+    private static void OnTcmRibbonTabDeactivated(object? sender, EventArgs e)
+    {
+        // Hub napustjen → odmah 1 (modul / drugi AutoCAD tab).
+        // Kad se hub ponovo aktivira, Activated vraca 0.
+        if (sender is RibbonTab tab &&
+            string.Equals(tab.Id, TabId, StringComparison.OrdinalIgnoreCase))
+        {
+            SetRibbonIconResize(1);
+            return;
+        }
+
+        SyncRibbonIconResizeForActiveTab();
+    }
+
+    private static void SetRibbonIconResize(int value)
+    {
+        try
+        {
+            var current = AcApp.GetSystemVariable("RIBBONICONRESIZE");
+            var existing = current switch
+            {
+                short s => (int)s,
+                int i => i,
+                long l => (int)l,
+                double d => (int)d,
+                _ => -1
+            };
+
+            if (existing == value)
+            {
+                return;
+            }
+
+            AcApp.SetSystemVariable("RIBBONICONRESIZE", value);
+        }
+        catch
+        {
+            // Sysvar nedostupan.
+        }
+    }
+
+    /// <summary>
+    /// Hub dugmad: preference 64px (RADI sa RIBBONICONRESIZE=0 na hub tabu).
+    /// </summary>
     private static void ApplyNativeSizedIcons(RibbonButton button, string iconName)
     {
         var large = RibbonIconLoader.LoadNative($"{iconName}_64")
@@ -323,31 +930,6 @@ internal static class RibbonBuilder
         }
 
         return button;
-    }
-
-    private static void TryEnableNativeRibbonIconSize()
-    {
-        try
-        {
-            var current = AcApp.GetSystemVariable("RIBBONICONRESIZE");
-            var value = current switch
-            {
-                short s => (int)s,
-                int i => i,
-                long l => (int)l,
-                double d => (int)d,
-                _ => 1
-            };
-
-            if (value != 0)
-            {
-                AcApp.SetSystemVariable("RIBBONICONRESIZE", 0);
-            }
-        }
-        catch
-        {
-            // Starije verzije bez sysvar-a.
-        }
     }
 
     private static RibbonButton CreateCommandButton(string text, string description, string command, string iconName)
@@ -453,6 +1035,54 @@ internal sealed class SituacijaModuleHandler : ICommand
     public bool CanExecute(object? parameter) => true;
 
     public void Execute(object? parameter) => RibbonBuilder.ActivateSituacijaTab();
+
+    public void RaiseCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+internal sealed class TerenModuleHandler : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter) => RibbonBuilder.ActivateTerenTab();
+
+    public void RaiseCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+internal sealed class CloseSituacijaHandler : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter) => RibbonBuilder.CloseSituacijaTab();
+
+    public void RaiseCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+internal sealed class CloseTerenHandler : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter) => RibbonBuilder.CloseTerenTab();
+
+    public void RaiseCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+internal sealed class ClosePoduzniProfilHandler : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter) => RibbonBuilder.ClosePoduzniProfilTab();
 
     public void RaiseCanExecuteChanged() =>
         CanExecuteChanged?.Invoke(this, EventArgs.Empty);

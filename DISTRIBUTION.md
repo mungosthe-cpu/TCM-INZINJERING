@@ -20,7 +20,7 @@ Rezultat u `dist\`:
 - `TCM-INZINJERING-<verzija>.zip` — arhiva za GitHub Release
 - `update-manifest.json` — manifest za proveru nadogradnje
 
-**Napomena:** Legacy DLL (AutoCAD 2020–2024 / BricsCAD) zahteva build na računaru gde je instaliran AutoCAD 2020–2024.
+**Napomena:** Legacy DLL (AutoCAD 2020–2024) se gradi preko **AutoCAD.NET 24.3 NuGet** (nije obavezan lokalni AutoCAD 2024). Default `dotnet build` uvek gradi i net48 i net8.
 
 ## Instalacija kod korisnika
 

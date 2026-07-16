@@ -19,22 +19,18 @@ internal sealed class InstallerForm : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(720, 480);
-        BackColor = Color.FromArgb(12, 28, 56);
+        // Isti ton kao donji deo brand slike — vidljiv samo ako logo nije ucitan.
+        BackColor = Color.FromArgb(8, 28, 72);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10f);
         DoubleBuffered = true;
 
-        var logoBox = new PictureBox
-        {
-            Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.StretchImage,
-            BackColor = Color.FromArgb(12, 28, 56)
-        };
-
         var logo = LoadLogo();
         if (logo is not null)
         {
-            logoBox.Image = logo;
+            // BackgroundImage preko CELOG klijentskog prostora (uklj. ispod status overlay-a).
+            BackgroundImage = logo;
+            BackgroundImageLayout = ImageLayout.Stretch;
             try
             {
                 Icon = Icon.FromHandle(((Bitmap)logo).GetHicon());
@@ -45,12 +41,15 @@ internal sealed class InstallerForm : Form
             }
         }
 
+        const int overlayHeight = 118;
         _overlay = new Panel
         {
-            Dock = DockStyle.Bottom,
-            Height = 118,
+            // Ne koristi Dock.Bottom — to bi smanjilo prostor za BackgroundImage
+            // i ostavilo „crnu“ traku bez slike.
+            Bounds = new Rectangle(0, ClientSize.Height - overlayHeight, ClientSize.Width, overlayHeight),
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom,
             Padding = new Padding(16, 10, 16, 10),
-            BackColor = Color.FromArgb(200, 8, 20, 40)
+            BackColor = Color.FromArgb(180, 6, 18, 42)
         };
 
         _statusLabel = new Label
@@ -97,9 +96,7 @@ internal sealed class InstallerForm : Form
         _overlay.Controls.Add(_progress);
         _overlay.Controls.Add(_statusLabel);
 
-        // Logo ispunjava ceo prozor; overlay statusa je preko donjeg dela.
         Controls.Add(_overlay);
-        Controls.Add(logoBox);
     }
 
     public void SetStatus(string text)

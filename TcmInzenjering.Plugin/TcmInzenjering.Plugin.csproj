@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0-windows</TargetFrameworks>
-    <TargetFrameworks Condition="'$(BuildLegacy)' == 'true'">net48;net8.0-windows</TargetFrameworks>
+    <!-- Uvek net48 (AutoCAD 2020–2024) + net8 (AutoCAD 2025–2026). -->
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <TargetFrameworks Condition="'$(SkipLegacy)' == 'true'">net8.0-windows</TargetFrameworks>
+    <TargetFrameworks Condition="'$(LegacyOnly)' == 'true'">net48</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>TcmInzenjering.Plugin</RootNamespace>
@@ -34,6 +36,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- FolderBrowserDialog u ProjectFolderDialog — bez UseWindowsForms (izbegava konflikt sa WPF). -->
+    <Reference Include="System.Windows.Forms" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net48' and '$(UseBricsCAD)' == 'true'">
@@ -97,14 +101,6 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
-    <!-- Legacy AutoCAD 2020-2024: Plo2Tan dialog is included; CrossAxis/Terrain UI stay net8-only for now. -->
-    <Page Remove="Dialogs\CrossAxisSettingsDialog.xaml" />
-    <Page Remove="Dialogs\TerrainProjectionDialog.xaml" />
-    <Compile Remove="Dialogs\CrossAxisSettingsDialog.xaml.cs" />
-    <Compile Remove="Dialogs\TerrainProjectionDialog.xaml.cs" />
-  </ItemGroup>
-
   <ItemGroup Condition="'$(TargetFramework)' == 'net48' and '$(UseBricsCAD)' == 'true'">
     <Page Remove="Dialogs\**\*.xaml" />
     <Compile Remove="Dialogs\**\*.xaml.cs" />
@@ -145,7 +141,8 @@
   </Target>
 
   <Target Name="DeployToApplicationPlugins" AfterTargets="CopyToBundle" Condition="'$(TargetFramework)' == 'net8.0-windows' and '$(DeployPlugin)' == 'true'">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\install-plugin.ps1&quot; -DllPath &quot;$(TargetPath)&quot;" IgnoreExitCode="false" />
+    <!-- Pokrece se posle net8 (net48 se gradi prvi) — instalira ceo bundle (net48 + net8). -->
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\install-plugin.ps1&quot; -Quiet -DllPath &quot;$(TargetPath)&quot;" IgnoreExitCode="false" />
   </Target>
 
 </Project>

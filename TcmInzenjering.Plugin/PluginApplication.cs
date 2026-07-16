@@ -26,6 +26,9 @@ public sealed class PluginApplication : IExtensionApplication
             PluginAssemblyResolver.Register();
 
 #if !BRICSCAD
+            // Hub=0, ostali tabovi=1 (sinhronizuje se i pomjenom ActiveTab).
+            RibbonBuilder.SyncRibbonIconResizeForActiveTab();
+
             if (Autodesk.Windows.ComponentManager.Ribbon is not null)
             {
                 EnsureRibbon();
@@ -42,7 +45,10 @@ public sealed class PluginApplication : IExtensionApplication
             {
                 Roads.AxisChangeMonitor.Initialize();
                 Roads.AxisSelectionCoordinator.Initialize();
+                Roads.TerrainSelectionCoordinator.Initialize();
                 Roads.StationFontPreferences.Load();
+                Roads.ProjectFolderPreferences.Load();
+                Roads.Terrain.ContourPreferences.Load();
             }
             catch (System.Exception ex)
             {
@@ -64,9 +70,12 @@ public sealed class PluginApplication : IExtensionApplication
         Autodesk.Windows.ComponentManager.ItemInitialized -= OnComponentManagerItemInitialized;
         Autodesk.AutoCAD.ApplicationServices.Core.Application.Idle -= OnIdleOnce;
         Autodesk.AutoCAD.ApplicationServices.Core.Application.SystemVariableChanged -= OnSystemVariableChanged;
+        // Ne ostavljaj AutoCAD na RIBBONICONRESIZE=0 posle unload-a.
+        RibbonBuilder.RestoreAutoCadRibbonIconResizeDefault();
 #endif
         Roads.AxisChangeMonitor.Terminate();
         Roads.AxisSelectionCoordinator.Terminate();
+        Roads.TerrainSelectionCoordinator.Terminate();
     }
 
 #if !BRICSCAD

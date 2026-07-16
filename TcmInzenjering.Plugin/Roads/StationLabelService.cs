@@ -1,5 +1,6 @@
 using Autodesk.AutoCAD.DatabaseServices;
 using TcmInzenjering.Plugin.Roads.CrossAxis;
+using TcmInzenjering.Plugin.Roads.Profile;
 using TcmInzenjering.Plugin.Roads.Terrain;
 
 namespace TcmInzenjering.Plugin.Roads;
@@ -44,6 +45,7 @@ internal static class StationLabelService
         var count = RefreshLabels(tr, db, axisName, metadata);
         UpdateAxisReference(tr, db, axisName, metadata.StartStation);
         count += TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
+        count += ProfileViewRefresh.RefreshIfExists(tr, db, axisName);
         RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
         return count;
     }
@@ -163,8 +165,9 @@ internal static class StationLabelService
 
         UpdateAxisReference(tr, db, axisName, stationOptions.StartStation);
         var projected = TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
+        var profiles = ProfileViewRefresh.RefreshIfExists(tr, db, axisName);
         RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
-        return stationCount + segmentCount + nodeCount + projected;
+        return stationCount + segmentCount + nodeCount + projected + profiles;
     }
 
     private static int RefreshLabels(Transaction tr, Database db, string axisName, RoadAxisMetadata metadata)

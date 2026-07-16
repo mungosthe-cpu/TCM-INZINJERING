@@ -1,0 +1,75 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.TerrainBlockPointDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dodaj tacku kao blok"
+        Height="420"
+        Width="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        MinHeight="360"
+        MinWidth="460"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+      <TextBlock FontWeight="SemiBold" FontSize="13" Text="Izabrani blok"/>
+      <TextBlock x:Name="BlockNameText" Margin="0,4,0,0" FontSize="14"/>
+      <TextBlock Margin="0,6,0,0" Foreground="#555" TextWrapping="Wrap"
+                 Text="Izaberite atribut koji sadrzi visinu (Z) i odakle se uzima XY insertna tacka."/>
+    </StackPanel>
+
+    <DataGrid Grid.Row="1"
+              x:Name="AttrsGrid"
+              AutoGenerateColumns="False"
+              IsReadOnly="True"
+              CanUserAddRows="False"
+              HeadersVisibility="Column"
+              SelectionMode="Single"
+              SelectionUnit="FullRow"
+              GridLinesVisibility="Horizontal"
+              AlternatingRowBackground="#F3F3F3"
+              SelectionChanged="OnAttrSelectionChanged">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Atribut" Binding="{Binding Tag}" Width="140"/>
+        <DataGridTextColumn Header="Vrednost" Binding="{Binding Value}" Width="*"/>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <Grid Grid.Row="2" Margin="0,12,0,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <TextBlock Grid.Row="0" Grid.Column="0" Text="Atribut visine (Z):" VerticalAlignment="Center" Margin="0,0,8,8"/>
+      <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ElevationAttrBox" Height="26" Margin="0,0,0,8"
+                DisplayMemberPath="Tag"/>
+
+      <TextBlock Grid.Row="1" Grid.Column="0" Text="XY insertna tacka:" VerticalAlignment="Top" Margin="0,4,8,0"/>
+      <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,2,0,0">
+        <RadioButton x:Name="XyInsertRadio" Content="Insertna tacka bloka" IsChecked="True" Margin="0,0,0,4"/>
+        <RadioButton x:Name="XyAttrRadio" Content="Pozicija atributa visine (tekst / alignment)"/>
+      </StackPanel>
+    </Grid>
+
+    <TextBlock Grid.Row="3" x:Name="HintText" Margin="0,10,0,0" Foreground="#666" FontSize="11" TextWrapping="Wrap"
+               Text="Posle OK: na crtezu obelezavate samo instance ovog bloka — Z se cita iz atributa."/>
+
+    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+      <Button Content="OK" Width="96" Height="28" IsDefault="True" Click="OnOk" Margin="0,0,8,0"/>
+      <Button Content="Odustani" Width="96" Height="28" IsCancel="True" Click="OnCancel"/>
+    </StackPanel>
+  </Grid>
+</Window>

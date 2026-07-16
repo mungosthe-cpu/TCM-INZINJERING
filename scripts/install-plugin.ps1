@@ -220,15 +220,34 @@ if (Test-Path $BricsBundleSource) {
     Deploy-Bundle $BricsBundleSource "C:\Program Files\Bricsys\ApplicationPlugins\$bricsBundleName" | Out-Null
 }
 
-$appDataDll = Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName\Contents\net8\TcmInzenjering.Plugin.dll"
-if (Test-Path -LiteralPath $appDataDll) {
-    $DllPath = $appDataDll
+$appDataNet8 = Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName\Contents\net8\TcmInzenjering.Plugin.dll"
+$appDataNet48 = Join-Path $env:APPDATA "Autodesk\ApplicationPlugins\$bundleName\Contents\net48\TcmInzenjering.Plugin.Legacy.dll"
+
+if (Test-Path -LiteralPath $appDataNet8) {
+    $DllPath = $appDataNet8
+}
+elseif (Test-Path -LiteralPath $appDataNet48) {
+    $DllPath = $appDataNet48
 }
 elseif ([string]::IsNullOrWhiteSpace($DllPath) -or -not (Test-Path -LiteralPath $DllPath)) {
-    $err = "DLL nije pronadjen: $appDataDll"
+    $err = "DLL nije pronadjen (net8 ni net48):$nl  $appDataNet8$nl  $appDataNet48"
     Write-Host $err -ForegroundColor Red
     Show-UiMessage -Icon Error -Message ("Instalacija nije uspela." + $nl + $nl + $err)
     throw $err
+}
+
+if (Test-Path -LiteralPath $appDataNet48) {
+    Write-Host "Legacy (AutoCAD 2020-2024): $appDataNet48" -ForegroundColor Cyan
+}
+else {
+    Write-Host "Upozorenje: nema net48 Legacy DLL — AutoCAD 2024 nece ucitati plugin." -ForegroundColor Yellow
+}
+
+if (Test-Path -LiteralPath $appDataNet8) {
+    Write-Host "Modern (AutoCAD 2025-2026): $appDataNet8" -ForegroundColor Cyan
+}
+else {
+    Write-Host "Upozorenje: nema net8 DLL — AutoCAD 2026 nece ucitati plugin." -ForegroundColor Yellow
 }
 
 $registered = 0
