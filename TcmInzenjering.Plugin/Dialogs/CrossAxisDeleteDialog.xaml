@@ -1,0 +1,55 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.CrossAxisDeleteDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Brisanje poprečnih osa"
+        Height="480"
+        Width="520"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        MinHeight="360"
+        MinWidth="420"
+        ShowInTaskbar="False"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0" Margin="0,0,0,8" TextWrapping="Wrap"
+               Text="Izaberite poprečne ose u tabeli i obrišite ih, ili pokažite osu na crtežu. Brisanje ažurira stacionaže i podužni profil."/>
+
+    <DataGrid Grid.Row="1"
+              x:Name="AxesGrid"
+              AutoGenerateColumns="False"
+              IsReadOnly="True"
+              CanUserAddRows="False"
+              CanUserDeleteRows="False"
+              HeadersVisibility="Column"
+              SelectionMode="Extended"
+              SelectionUnit="FullRow"
+              GridLinesVisibility="Horizontal"
+              AlternatingRowBackground="#F5F7FA">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Oznaka" Binding="{Binding DisplayName}" Width="90"/>
+        <DataGridTextColumn Header="Stacionaža" Binding="{Binding StationDisplay}" Width="110"/>
+        <DataGridTextColumn Header="Osovina" Binding="{Binding RoadAxisName}" Width="*"/>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+      <Button Content="Obriši selektovane" Width="140" Height="28" Margin="0,0,8,0"
+              Click="OnDeleteSelected"/>
+      <Button Content="Pokaži u crtežu…" Width="140" Height="28" Margin="0,0,8,0"
+              Click="OnPickInDrawing"
+              ToolTip="Zatvara prozor, birate poprečnu osu na crtežu, zatim se prozor ponovo otvara."/>
+      <Button Content="Osveži listu" Width="100" Height="28" Click="OnRefresh"/>
+    </StackPanel>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Content="Zatvori" Width="88" Height="28" IsCancel="True" IsDefault="True" Click="OnClose"/>
+    </StackPanel>
+  </Grid>
+</Window>

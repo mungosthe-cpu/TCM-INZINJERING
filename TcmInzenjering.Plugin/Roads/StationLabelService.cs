@@ -42,6 +42,9 @@ internal static class StationLabelService
                 metadata.StartStation);
         });
 
+        // Ako postoje SAS parametri, ponovo ih primeni (Reconcile radi samo kružne lukove).
+        ReapplySavedCornerCurves(tr, db, axisName, metadata);
+
         var count = RefreshLabels(tr, db, axisName, metadata);
         UpdateAxisReference(tr, db, axisName, metadata.StartStation);
         count += TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
@@ -49,6 +52,117 @@ internal static class StationLabelService
         RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
         return count;
     }
+
+    private static void ReapplySavedCornerCurves(
+        Transaction tr,
+        Database db,
+        string axisName,
+        RoadAxisMetadata metadata)
+    {
+        var curves = CornerCurveStore.Load(tr, db, axisName);
+        if (!curves.Values.Any(c => c.L1 > 1e-6 || c.L2 > 1e-6))
+        {
+            return;
+        }
+
+        var axis = AxisGeometryReader.ReadAxis(tr, db, axisName, metadata.StartStation);
+        if (axis is null)
+        {
+            return;
+        }
+
+        var withSas = CornerCurveApplicator.ApplySavedCurves(tr, db, axis);
+        if (withSas.Elements.Count(e => e.Type == AlignmentElementType.Spiral) == 0)
+        {
+            return;
+        }
+
+        ObjectId sourceId = ObjectId.Null;
+        if (metadata.HasSourcePolyline)
+        {
+            AxisPolylineResolver.TryResolve(db, metadata.SourcePolylineHandle, out sourceId);
+        }
+
+        var color = metadata.AxisColorIndex;
+        RoadDrawing.RunWithUnlockedAxisLayer(tr, db, () =>
+        {
+            DeleteAxisEntities(tr, db, axisName);
+            var modelSpace = (BlockTableRecord)tr.GetObject(
+                SymbolUtilityServices.GetBlockModelSpaceId(db),
+                OpenMode.ForWrite);
+            RoadDrawing.DrawAxisCore(tr, modelSpace, withSas, sourceId, color);
+        });
+    }
+
+    /// <summary>
+    /// Posle ručne izmene R na čvoru: stacionaže, tabele, 3D projekcija, podužni.
+    /// </summary>
+    public static int RefreshAfterCornerEdit(Transaction tr, Database db, string axisName)
+    {
+        var metadata = RoadAxisStore.Load(tr, db, axisName);
+        if (metadata is null)
+        {
+            return 0;
+        }
+
+        var axis = AxisGeometryReader.ReadAxis(tr, db, axisName, metadata.StartStation);
+        if (axis is not null && axis.Elements.Count > 0)
+        {
+            var newEnd = axis.Elements[^1].EndStation;
+            if (Math.Abs(newEnd - metadata.EndStation) > 1e-3 ||
+                newEnd > metadata.EndStation + 1e-3)
+            {
+                metadata = CloneMetadataWithEnd(metadata, newEnd);
+                RoadAxisStore.Save(tr, db, metadata);
+            }
+        }
+
+        var count = RefreshLabels(tr, db, axisName, metadata);
+
+        axis = AxisGeometryReader.ReadAxis(tr, db, axisName, metadata.StartStation);
+        if (axis is not null)
+        {
+            CrossAxisDrawService.EnsureEndStationCrossAxis(tr, db, axisName, axis, metadata);
+        }
+
+        UpdateAxisReference(tr, db, axisName, metadata.StartStation);
+        count += TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
+        count += ProfileViewRefresh.RefreshIfExists(tr, db, axisName);
+        RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
+        return count;
+    }
+
+    private static RoadAxisMetadata CloneMetadataWithEnd(RoadAxisMetadata metadata, double endStation) =>
+        new()
+        {
+            Name = metadata.Name,
+            StartStation = metadata.StartStation,
+            EndStation = endStation,
+            Interval = metadata.Interval,
+            TickLength = metadata.TickLength,
+            TextHeight = metadata.TextHeight,
+            Prefix = metadata.Prefix,
+            LabelSideSign = metadata.LabelSideSign,
+            CurveRadius = metadata.CurveRadius,
+            EqualIntervalInBounds = metadata.EqualIntervalInBounds,
+            WholeInterval = metadata.WholeInterval,
+            AlignToStart = metadata.AlignToStart,
+            LabelAtStart = metadata.LabelAtStart,
+            LabelAtEnd = true,
+            LabelAtMainPoints = metadata.LabelAtMainPoints,
+            SourcePolylineHandle = metadata.SourcePolylineHandle,
+            PolylineStartDistance = metadata.PolylineStartDistance,
+            PolylineEndDistance = metadata.PolylineEndDistance,
+            PolylineReferenceLength = metadata.PolylineReferenceLength,
+            AxisCounterStart = metadata.AxisCounterStart,
+            LabelFormat = metadata.LabelFormat,
+            ChainageFormat = metadata.ChainageFormat,
+            DrawSegmentLabels = metadata.DrawSegmentLabels,
+            AxisColorIndex = metadata.AxisColorIndex,
+            StationTextColorIndex = metadata.StationTextColorIndex,
+            StationTickColorIndex = metadata.StationTickColorIndex,
+            SegmentLabelColorIndex = metadata.SegmentLabelColorIndex
+        };
 
     public static int RefreshAxisFromPolyline(Transaction tr, Database db, string axisName)
     {
@@ -82,7 +196,15 @@ internal static class StationLabelService
         ObjectId polylineId)
     {
         var polyline = (Polyline)tr.GetObject(polylineId, OpenMode.ForRead);
-        var fullAxis = PolylineToTangentConverter.Convert(polyline, metadata.CurveRadius, 0, axisName);
+        var cornerRadii = CornerRadiusStore.Load(tr, db, axisName);
+        var fullAxis = PolylineToTangentConverter.Convert(
+            polyline,
+            metadata.CurveRadius,
+            0,
+            axisName,
+            cornerRadii);
+        // Sačuvane prelaznice (L1/R/L2) — ne gube se pri pomeranju izvorne polilinije.
+        fullAxis = CornerCurveApplicator.ApplySavedCurves(tr, db, fullAxis);
         var stationOptions = metadata.ToLabelOptions(polyline, fullAxis);
         var visibleAxis = RoadAxisTrimmer.Trim(
             fullAxis,
@@ -120,6 +242,8 @@ internal static class StationLabelService
         });
 
         CrossAxisLayoutService.SyncToRoadAxis(tr, db, axisName, visibleAxis, stationOptions);
+        CrossAxisDrawService.RestoreManualCrossAxisAnnotations(
+            tr, db, axisName, visibleAxis, metadata, stationOptions);
         var polylineForWrite = (Polyline)tr.GetObject(polylineId, OpenMode.ForWrite);
         RoadXData.AttachSourcePolyline(polylineForWrite, axisName);
         RoadDrawing.StyleSourcePolyline(tr, db, polylineForWrite);
@@ -208,6 +332,8 @@ internal static class StationLabelService
         var nodeCount = RoadDrawing.DrawTangentNodeTables(tr, modelSpace, axis, metadata.TextHeight);
 
         CrossAxisLayoutService.SyncToRoadAxis(tr, db, axisName, axis, metadata.ToLabelOptions());
+        CrossAxisDrawService.RestoreManualCrossAxisAnnotations(
+            tr, db, axisName, axis, metadata, metadata.ToLabelOptions());
 
         return stationCount + segmentCount + nodeCount;
     }

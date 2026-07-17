@@ -48,16 +48,17 @@ public sealed partial class RoadCommands
         Transaction tr,
         Database db,
         SurfaceStyleSnapshot style,
-        IReadOnlyList<TerrainFacePart> faceParts)
+        IReadOnlyList<TerrainFacePart> faceParts,
+        string? surfaceName = null)
     {
-        var slopesOn = style.AnalyzeSlopes || style.GetComponent("Slopes").Visible;
-        var arrowsOn = style.AnalyzeSlopeArrows || style.GetComponent("Slope Arrows").Visible;
-        var directionsOn = style.AnalyzeDirections || style.GetComponent("Directions").Visible;
-        var elevOn = style.AnalyzeElevations || style.GetComponent("Elevations").Visible;
-        var watershedOn = style.ShowWatersheds || style.GetComponent("Watersheds").Visible;
+        var slopesOn = style.GetComponent("Slopes").Visible;
+        var arrowsOn = style.GetComponent("Slope Arrows").Visible;
+        var directionsOn = style.GetComponent("Directions").Visible;
+        var elevOn = style.GetComponent("Elevations").Visible;
+        var watershedOn = style.GetComponent("Watersheds").Visible;
 
-        var erasedArrows = EraseEntitiesWithAnalysisRole(tr, db, TerrainAnalysisXData.RoleSlopeArrow);
-        var erasedWshd = EraseEntitiesWithAnalysisRole(tr, db, TerrainAnalysisXData.RoleWatershed);
+        var erasedArrows = EraseEntitiesWithAnalysisRole(tr, db, TerrainAnalysisXData.RoleSlopeArrow, surfaceName);
+        var erasedWshd = EraseEntitiesWithAnalysisRole(tr, db, TerrainAnalysisXData.RoleWatershed, surfaceName);
         _ = erasedArrows;
         _ = erasedWshd;
 
@@ -142,7 +143,8 @@ public sealed partial class RoadCommands
                 arrowComp = style.GetComponent("Directions");
             }
 
-            EnsureNamedLayer(tr, db, SlopeArrowLayer,
+            var arrowLayer = TerrainLayerNames.For(SlopeArrowLayer, surfaceName);
+            EnsureNamedLayer(tr, db, arrowLayer,
                 arrowComp.ColorByLayer ? (short)7 : arrowComp.ColorAci, 0);
 
             for (var i = 0; i < faceParts.Count; i++)
@@ -165,10 +167,10 @@ public sealed partial class RoadCommands
                     c.Y + sample.FlowDirection.Y * len,
                     c.Z);
                 var line = new Line(c, tip);
-                ApplyAnalysisComponentStyle(tr, db, line, arrowComp, SlopeArrowLayer);
+                ApplyAnalysisComponentStyle(tr, db, line, arrowComp, arrowLayer);
                 modelSpace.AppendEntity(line);
                 tr.AddNewlyCreatedDBObject(line, true);
-                TerrainAnalysisXData.AttachSlopeArrow(line, sample.SlopePercent);
+                TerrainAnalysisXData.AttachSlopeArrow(line, sample.SlopePercent, surfaceName);
 
                 // Mali „V“ arrowhead.
                 var hx = -sample.FlowDirection.X;
@@ -178,10 +180,10 @@ public sealed partial class RoadCommands
                 var oy = hx * 0.35;
                 AddArrowHeadLine(tr, db, modelSpace, tip,
                     new Point3d(tip.X + hx * headLen + ox * headLen, tip.Y + hy * headLen + oy * headLen, tip.Z),
-                    arrowComp, sample.SlopePercent);
+                    arrowComp, sample.SlopePercent, arrowLayer, surfaceName);
                 AddArrowHeadLine(tr, db, modelSpace, tip,
                     new Point3d(tip.X + hx * headLen - ox * headLen, tip.Y + hy * headLen - oy * headLen, tip.Z),
-                    arrowComp, sample.SlopePercent);
+                    arrowComp, sample.SlopePercent, arrowLayer, surfaceName);
                 arrowCount++;
             }
         }
@@ -190,7 +192,8 @@ public sealed partial class RoadCommands
         if (watershedOn && watershed is not null)
         {
             var wComp = style.GetComponent("Watersheds");
-            EnsureNamedLayer(tr, db, WatershedLayer,
+            var wLayer = TerrainLayerNames.For(WatershedLayer, surfaceName);
+            EnsureNamedLayer(tr, db, wLayer,
                 wComp.ColorByLayer ? (short)1 : wComp.ColorAci, 0.35);
 
             foreach (var ring in watershed.BasinOutlines)
@@ -222,10 +225,10 @@ public sealed partial class RoadCommands
                 if (pl.NumberOfVertices >= 3)
                 {
                     pl.Closed = true;
-                    ApplyAnalysisComponentStyle(tr, db, pl, wComp, WatershedLayer);
+                    ApplyAnalysisComponentStyle(tr, db, pl, wComp, wLayer);
                     modelSpace.AppendEntity(pl);
                     tr.AddNewlyCreatedDBObject(pl, true);
-                    TerrainAnalysisXData.AttachWatershed(pl, wshdCount);
+                    TerrainAnalysisXData.AttachWatershed(pl, wshdCount, surfaceName);
                     wshdCount++;
                 }
                 else
@@ -245,13 +248,15 @@ public sealed partial class RoadCommands
         Point3d from,
         Point3d to,
         SurfaceComponentStyle comp,
-        double slopePercent)
+        double slopePercent,
+        string layerName,
+        string? surfaceName)
     {
         var line = new Line(from, to);
-        ApplyAnalysisComponentStyle(tr, db, line, comp, SlopeArrowLayer);
+        ApplyAnalysisComponentStyle(tr, db, line, comp, layerName);
         modelSpace.AppendEntity(line);
         tr.AddNewlyCreatedDBObject(line, true);
-        TerrainAnalysisXData.AttachSlopeArrow(line, slopePercent);
+        TerrainAnalysisXData.AttachSlopeArrow(line, slopePercent, surfaceName);
     }
 
     private static void ApplyAnalysisComponentStyle(
@@ -259,11 +264,8 @@ public sealed partial class RoadCommands
         Database db,
         Entity entity,
         SurfaceComponentStyle comp,
-        string defaultLayer)
+        string layerName)
     {
-        var layerName = string.IsNullOrWhiteSpace(comp.Layer) || comp.Layer == "0"
-            ? defaultLayer
-            : comp.Layer.Trim();
         EnsureNamedLayer(tr, db, layerName,
             comp.ColorByLayer ? (short)7 : comp.ColorAci,
             comp.LineWeightByBlock ? 0 : comp.LineWeightMm);
@@ -324,7 +326,11 @@ public sealed partial class RoadCommands
     private static bool PointsClose(Point2d a, Point2d b) =>
         Math.Abs(a.X - b.X) < 1e-4 && Math.Abs(a.Y - b.Y) < 1e-4;
 
-    private static int EraseEntitiesWithAnalysisRole(Transaction tr, Database db, string role)
+    private static int EraseEntitiesWithAnalysisRole(
+        Transaction tr,
+        Database db,
+        string role,
+        string? surfaceName = null)
     {
         var count = 0;
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -338,9 +344,27 @@ public sealed partial class RoadCommands
                 continue;
             }
 
-            if (!TerrainAnalysisXData.TryGetRole(entity, out var r) || r != role)
+            if (!TerrainAnalysisXData.TryGetRole(entity, out var r, out var entitySurface) || r != role)
             {
                 continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(surfaceName))
+            {
+                if (!string.IsNullOrWhiteSpace(entitySurface))
+                {
+                    if (!string.Equals(entitySurface, surfaceName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                }
+                else if (!TerrainLayerNames.MatchesSurface(entity.Layer, SlopeArrowLayer, surfaceName) &&
+                         !TerrainLayerNames.MatchesSurface(entity.Layer, WatershedLayer, surfaceName) &&
+                         !string.Equals(entity.Layer, SlopeArrowLayer, StringComparison.OrdinalIgnoreCase) &&
+                         !string.Equals(entity.Layer, WatershedLayer, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
             }
 
             entity.UpgradeOpen();
@@ -351,7 +375,10 @@ public sealed partial class RoadCommands
         return count;
     }
 
-    internal static List<TerrainFacePart> LoadTerrainFacePartsFromModel(Transaction tr, Database db)
+    internal static List<TerrainFacePart> LoadTerrainFacePartsFromModel(
+        Transaction tr,
+        Database db,
+        string? surfaceName = null)
     {
         var parts = new List<TerrainFacePart>();
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -365,8 +392,7 @@ public sealed partial class RoadCommands
                 continue;
             }
 
-            if (!TerrainFaceXData.IsTerrainFace(face) &&
-                !string.Equals(face.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase))
+            if (!TerrainSurfaceScope.FaceBelongsTo(face, surfaceName))
             {
                 continue;
             }

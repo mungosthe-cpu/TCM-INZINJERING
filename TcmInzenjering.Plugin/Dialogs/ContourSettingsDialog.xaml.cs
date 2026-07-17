@@ -26,6 +26,7 @@ public partial class ContourSettingsDialog : Window
     private readonly DispatcherTimer _liveApplyTimer;
     private short _dataPointAci = 1;
     private short _derivedPointAci = 7;
+    private short _contourLabelAci = 1;
     private bool _loading;
     private bool _applying;
     private string? _lastAppliedFingerprint;
@@ -63,11 +64,16 @@ public partial class ContourSettingsDialog : Window
         foreach (var box in new[]
                  {
                      BaseBox, MinorBox, MajorBox, UserContoursBox, ContourFlattenBox, ContourExagBox,
-                     DepressionLenBox, RangeCountBox
+                     DepressionLenBox, RangeCountBox, ContourLabelHeightBox, ContourLabelDecimalsBox
                  })
         {
             box.LostFocus += (_, _) => ScheduleLiveApply();
         }
+
+        ContourLabelFontBox.LostFocus += (_, _) => ScheduleLiveApply();
+        ContourLabelFontBox.SelectionChanged += (_, _) => ScheduleLiveApply();
+        ContourLabelMaskBox.Checked += (_, _) => ScheduleLiveApply();
+        ContourLabelMaskBox.Unchecked += (_, _) => ScheduleLiveApply();
 
         SmoothBox.Checked += (_, _) => ScheduleLiveApply();
         SmoothBox.Unchecked += (_, _) => ScheduleLiveApply();
@@ -84,6 +90,38 @@ public partial class ContourSettingsDialog : Window
         SmoothFactorSlider.PreviewMouseUp += (_, _) => ScheduleLiveApply();
         SmoothFactorSlider.LostMouseCapture += (_, _) => ScheduleLiveApply();
         SmoothFactorSlider.KeyUp += (_, _) => ScheduleLiveApply();
+
+        // Display / Analysis — live osvežavanje. Analysis checkbox ažurira Display Visible.
+        foreach (var box in new[] { ExtBorderBox, IntBorderBox, LegendBox })
+        {
+            box.Checked += (_, _) => ScheduleLiveApply();
+            box.Unchecked += (_, _) => ScheduleLiveApply();
+        }
+
+        WireAnalysisToDisplay(ShowWatershedsBox, "Watersheds");
+        WireAnalysisToDisplay(AnalyzeDirBox, "Directions");
+        WireAnalysisToDisplay(AnalyzeElevBox, "Elevations");
+        WireAnalysisToDisplay(AnalyzeSlopeBox, "Slopes");
+        WireAnalysisToDisplay(AnalyzeArrowBox, "Slope Arrows");
+
+        BorderModeBox.SelectionChanged += (_, _) => ScheduleLiveApply();
+        TriangleModeBox.SelectionChanged += (_, _) => ScheduleLiveApply();
+        GridModeBox.SelectionChanged += (_, _) => ScheduleLiveApply();
+        PointModeBox.SelectionChanged += (_, _) => ScheduleLiveApply();
+    }
+
+    private void WireAnalysisToDisplay(System.Windows.Controls.CheckBox box, string componentType)
+    {
+        box.Checked += (_, _) =>
+        {
+            SyncDisplayRowVisible(componentType, true);
+            ScheduleLiveApply();
+        };
+        box.Unchecked += (_, _) =>
+        {
+            SyncDisplayRowVisible(componentType, false);
+            ScheduleLiveApply();
+        };
     }
 
     private void ScheduleLiveApply()
@@ -129,7 +167,10 @@ public partial class ContourSettingsDialog : Window
             _lastAppliedFingerprint = StyleFingerprint(ContourPreferences.Current);
             ModifiedByLbl.Text = ContourPreferences.Current.LastModifiedBy;
             DateModifiedLbl.Text = FormatDate(ContourPreferences.Current.DateModified);
-            RoadCommands.ApplyCurrentContourStyleToDrawing(writeMessage: !quiet);
+            // Live Display: ne crta nove izohipse ako nisu već u crtežu; Apply/OK uvek primeni stil.
+            RoadCommands.ApplyCurrentContourStyleToDrawing(
+                writeMessage: !quiet,
+                contoursOnlyIfPresent: quiet);
 
             if (closeAfter)
             {
@@ -213,6 +254,21 @@ public partial class ContourSettingsDialog : Window
         SmoothFactorSlider.Value = s.SmoothFactor;
         MajorDisplayLtBox.Text = s.MajorDisplayLinetype;
         MinorDisplayLtBox.Text = s.MinorDisplayLinetype;
+
+        var fonts = StationFontCatalog.Load();
+        ContourLabelFontBox.ItemsSource = fonts;
+        ContourLabelFontBox.DisplayMemberPath = nameof(StationFontOption.DisplayName);
+        ContourLabelFontBox.SelectedValuePath = nameof(StationFontOption.FileName);
+        var labelFont = fonts.FirstOrDefault(f =>
+            string.Equals(f.FileName, s.ContourLabelFont, StringComparison.OrdinalIgnoreCase));
+        ContourLabelFontBox.SelectedItem = labelFont;
+        ContourLabelFontBox.Text = labelFont?.DisplayName ?? s.ContourLabelFont;
+        ContourLabelHeightBox.Text = F(s.ContourLabelHeight);
+        ContourLabelDecimalsBox.Text = s.ContourLabelDecimals.ToString(Inv);
+        _contourLabelAci = s.ContourLabelColorAci;
+        AciColorHelper.ApplyToButton(ContourLabelColorBtn, _contourLabelAci);
+        ContourLabelMaskBox.IsChecked = s.ContourLabelBackgroundMask;
+
         OnContourModeChanged(null!, null!);
         OnDepressionChanged(null!, null!);
         UpdateSmoothUi();
@@ -282,6 +338,7 @@ public partial class ContourSettingsDialog : Window
             !TryParse(ContourFlattenBox.Text, out var contourFlat) ||
             !TryParse(ContourExagBox.Text, out var contourExag) ||
             !TryParse(DepressionLenBox.Text, out var depLen) ||
+            !TryParse(ContourLabelHeightBox.Text, out var labelHeight) ||
             !TryParse(GridFlattenBox.Text, out var gridFlat) ||
             !TryParse(GridExagBox.Text, out var gridExag) ||
             !TryParse(PrimaryIntBox.Text, out var pInt) ||
@@ -305,9 +362,17 @@ public partial class ContourSettingsDialog : Window
         }
 
         if (!int.TryParse(DataSymBox.Text.Trim(), NumberStyles.Integer, Inv, out var dataSym) ||
-            !int.TryParse(DerivedSymBox.Text.Trim(), NumberStyles.Integer, Inv, out var derSym))
+            !int.TryParse(DerivedSymBox.Text.Trim(), NumberStyles.Integer, Inv, out var derSym) ||
+            !int.TryParse(ContourLabelDecimalsBox.Text.Trim(), NumberStyles.Integer, Inv, out var labelDecimals))
         {
-            error = "Point Symbol mora biti ceo broj.";
+            error = "Point Symbol / broj decimala moraju biti celi brojevi.";
+            return false;
+        }
+
+        labelDecimals = MathNet48.Clamp(labelDecimals, 0, 6);
+        if (labelHeight < 0.1)
+        {
+            error = "Visina kotne oznake mora biti ≥ 0.1.";
             return false;
         }
 
@@ -342,6 +407,14 @@ public partial class ContourSettingsDialog : Window
         snapshot.MajorDisplayLinetype = GetComboText(MajorDisplayLtBox) ?? "Continuous";
         snapshot.MinorDisplayLinetype = GetComboText(MinorDisplayLtBox) ?? "Continuous";
 
+        var selectedFont = ContourLabelFontBox.SelectedItem as StationFontOption;
+        snapshot.ContourLabelFont = StationFontCatalog.ResolveFileName(
+            selectedFont?.FileName ?? ContourLabelFontBox.Text);
+        snapshot.ContourLabelHeight = labelHeight;
+        snapshot.ContourLabelDecimals = labelDecimals;
+        snapshot.ContourLabelColorAci = _contourLabelAci;
+        snapshot.ContourLabelBackgroundMask = ContourLabelMaskBox.IsChecked == true;
+
         snapshot.GridDisplayMode = (SurfaceElevationDisplayMode)MathNet48.Clamp(GridModeBox.SelectedIndex, 0, 2);
         snapshot.FlattenGridElevation = gridFlat;
         snapshot.ExaggerateGridScale = gridExag;
@@ -368,45 +441,30 @@ public partial class ContourSettingsDialog : Window
         snapshot.FlattenTrianglesElevation = triFlat;
         snapshot.ExaggerateTrianglesScale = triExag;
 
-        snapshot.ShowWatersheds = ShowWatershedsBox.IsChecked == true;
-        snapshot.AnalyzeDirections = AnalyzeDirBox.IsChecked == true;
-        snapshot.AnalyzeElevations = AnalyzeElevBox.IsChecked == true;
-        snapshot.AnalyzeSlopes = AnalyzeSlopeBox.IsChecked == true;
-        snapshot.AnalyzeSlopeArrows = AnalyzeArrowBox.IsChecked == true;
-
         snapshot.ViewDirection = ViewDirBox.SelectedIndex == 1 ? "Model" : "Plan";
         snapshot.Components = _displayRows.Select(r => r.ToStyle()).ToList();
         // Contours tab linetype → snapshot components (NE diraj UI redove — sprečava live-apply petlju).
         snapshot.GetComponent("Major Contour").Linetype = snapshot.MajorDisplayLinetype;
         snapshot.GetComponent("Minor Contour").Linetype = snapshot.MinorDisplayLinetype;
 
-        // Analysis checkbox → Display Visible (Civil sync).
-        if (snapshot.AnalyzeSlopes)
-        {
-            snapshot.GetComponent("Slopes").Visible = true;
-        }
-
-        if (snapshot.AnalyzeSlopeArrows || snapshot.AnalyzeDirections)
-        {
-            snapshot.GetComponent("Slope Arrows").Visible = true;
-        }
-
-        if (snapshot.AnalyzeDirections)
-        {
-            snapshot.GetComponent("Directions").Visible = true;
-        }
-
-        if (snapshot.AnalyzeElevations)
-        {
-            snapshot.GetComponent("Elevations").Visible = true;
-        }
-
-        if (snapshot.ShowWatersheds)
-        {
-            snapshot.GetComponent("Watersheds").Visible = true;
-        }
+        // Display Visible = izvor istine; Analysis flagovi prate.
+        snapshot.AnalyzeSlopes = snapshot.GetComponent("Slopes").Visible;
+        snapshot.AnalyzeElevations = snapshot.GetComponent("Elevations").Visible;
+        snapshot.AnalyzeSlopeArrows = snapshot.GetComponent("Slope Arrows").Visible;
+        snapshot.AnalyzeDirections = snapshot.GetComponent("Directions").Visible;
+        snapshot.ShowWatersheds = snapshot.GetComponent("Watersheds").Visible;
 
         return true;
+    }
+
+    private void SyncDisplayRowVisible(string componentType, bool visible)
+    {
+        var row = _displayRows.FirstOrDefault(r =>
+            string.Equals(r.ComponentType, componentType, StringComparison.OrdinalIgnoreCase));
+        if (row is not null && row.Visible != visible)
+        {
+            row.Visible = visible;
+        }
     }
 
     private void OnOk(object sender, RoutedEventArgs e)
@@ -504,6 +562,14 @@ public partial class ContourSettingsDialog : Window
             _dataPointAci = aci;
             DataColorByLayerBox.IsChecked = false;
             AciColorHelper.ApplyToButton(DataColorBtn, aci);
+        });
+
+    private void OnContourLabelColorClick(object sender, RoutedEventArgs e) =>
+        AciColorHelper.ShowPicker(ContourLabelColorBtn, _contourLabelAci, aci =>
+        {
+            _contourLabelAci = aci;
+            AciColorHelper.ApplyToButton(ContourLabelColorBtn, aci);
+            ScheduleLiveApply();
         });
 
     private void OnPickDerivedColor(object sender, RoutedEventArgs e) =>

@@ -32,6 +32,11 @@ internal sealed class RoadAxis
                 return element.Start + direction * offset;
             }
 
+            if (element.Type == AlignmentElementType.Spiral)
+            {
+                return SampleSpiral(element, offset);
+            }
+
             var sweep = element.EndStation - element.StartStation;
             if (Math.Abs(sweep) < 1e-9 || Math.Abs(element.Radius) < 1e-9)
             {
@@ -89,6 +94,11 @@ internal sealed class RoadAxis
         {
             var direction = match.End - match.Start;
             return direction.Length < 1e-9 ? null : direction.GetNormal();
+        }
+
+        if (match.Type == AlignmentElementType.Spiral)
+        {
+            return SampleSpiralDirection(match, station - match.StartStation);
         }
 
         var point = GetPointAtStation(station);
@@ -182,6 +192,63 @@ internal sealed class RoadAxis
         }
 
         return start + (end - start) * ratio;
+    }
+
+    private static Point3d SampleSpiral(AlignmentElement element, double offsetAlong)
+    {
+        var pts = element.SpiralPoints;
+        if (pts is null || pts.Count == 0)
+        {
+            return element.Start;
+        }
+
+        if (pts.Count == 1 || offsetAlong <= 0)
+        {
+            return pts[0];
+        }
+
+        var target = Math.Min(offsetAlong, element.Length);
+        var walked = 0.0;
+        for (var i = 1; i < pts.Count; i++)
+        {
+            var seg = pts[i - 1].DistanceTo(pts[i]);
+            if (walked + seg >= target - 1e-9)
+            {
+                var t = seg < 1e-12 ? 0 : (target - walked) / seg;
+                return pts[i - 1] + (pts[i] - pts[i - 1]) * t;
+            }
+
+            walked += seg;
+        }
+
+        return pts[^1];
+    }
+
+    private static Vector3d? SampleSpiralDirection(AlignmentElement element, double offsetAlong)
+    {
+        var pts = element.SpiralPoints;
+        if (pts is null || pts.Count < 2)
+        {
+            var d = element.End - element.Start;
+            return d.Length < 1e-9 ? null : d.GetNormal();
+        }
+
+        var target = Math.Min(Math.Max(0, offsetAlong), element.Length);
+        var walked = 0.0;
+        for (var i = 1; i < pts.Count; i++)
+        {
+            var seg = pts[i - 1].DistanceTo(pts[i]);
+            if (walked + seg >= target - 1e-9)
+            {
+                var d = pts[i] - pts[i - 1];
+                return d.Length < 1e-9 ? null : d.GetNormal();
+            }
+
+            walked += seg;
+        }
+
+        var last = pts[^1] - pts[^2];
+        return last.Length < 1e-9 ? null : last.GetNormal();
     }
 
     private static double NormalizeAngle(double angle)

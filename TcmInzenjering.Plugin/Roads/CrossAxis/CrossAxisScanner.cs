@@ -24,20 +24,34 @@ internal static class CrossAxisScanner
             {
                 continue;
             }
-            if (!CrossAxisXData.TryReadCrossAxis(entity, out var number))
+            if (!CrossAxisXData.TryReadCrossAxis(entity, out var number, out var parentAxis))
             {
                 continue;
+            }
+
+            var meta = CrossAxisMetaStore.Load(tr, db, entity.Handle.Value);
+            var station = meta?.Station ?? 0;
+            if (station <= 0 &&
+                RoadXData.TryReadStationLabel(entity, out _, out var role, out var tickStation) &&
+                role == RoadXData.RoleTick)
+            {
+                station = tickStation;
             }
 
             axes.Add(new CrossAxisInfo
             {
                 Number = number,
-                Handle = entity.Handle.Value
+                Handle = entity.Handle.Value,
+                Station = station,
+                RoadAxisName = !string.IsNullOrWhiteSpace(meta?.RoadAxisName)
+                    ? meta!.RoadAxisName!
+                    : parentAxis
             });
         }
 
         return axes
-            .OrderBy(axis => axis.Number)
+            .OrderBy(axis => axis.Station)
+            .ThenBy(axis => axis.Number)
             .ToList();
     }
 

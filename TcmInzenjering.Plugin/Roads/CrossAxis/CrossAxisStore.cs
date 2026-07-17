@@ -42,6 +42,20 @@ internal static class CrossAxisStore
         return Deserialize(record.Data.AsArray());
     }
 
+    public static void Remove(Transaction tr, Database db, long handle)
+    {
+        var dictionary = GetDictionary(tr, db, OpenMode.ForWrite);
+        var key = GetKey(handle);
+        if (!dictionary.Contains(key))
+        {
+            return;
+        }
+
+        var record = (Xrecord)tr.GetObject(dictionary.GetAt(key), OpenMode.ForWrite);
+        dictionary.Remove(key);
+        record.Erase();
+    }
+
     private static ResultBuffer Serialize(CrossAxisPlacementSettings settings) =>
         new(
             new TypedValue((int)DxfCode.Real, settings.Labels.Enabled ? 1.0 : 0.0),

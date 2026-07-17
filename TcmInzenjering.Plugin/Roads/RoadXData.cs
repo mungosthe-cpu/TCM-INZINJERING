@@ -32,7 +32,12 @@ internal static class RoadXData
 
     public static void AttachAxisElement(Entity entity, string axisName, int index, AlignmentElement element)
     {
-        var typeCode = element.Type == AlignmentElementType.Tangent ? "T" : "A";
+        var typeCode = element.Type switch
+        {
+            AlignmentElementType.Tangent => "T",
+            AlignmentElementType.Spiral => "S",
+            _ => "A"
+        };
         SetXData(entity, new ResultBuffer(
             new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleAxis),
@@ -41,7 +46,9 @@ internal static class RoadXData
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, typeCode),
             new TypedValue((int)DxfCode.ExtendedDataReal, element.StartStation),
             new TypedValue((int)DxfCode.ExtendedDataReal, element.EndStation),
-            new TypedValue((int)DxfCode.ExtendedDataReal, element.Radius)));
+            new TypedValue((int)DxfCode.ExtendedDataReal, element.Radius),
+            new TypedValue((int)DxfCode.ExtendedDataReal, element.SpiralA),
+            new TypedValue((int)DxfCode.ExtendedDataReal, element.Length)));
     }
 
     public static void AttachStationLabel(Entity entity, string axisName, string role, double station)

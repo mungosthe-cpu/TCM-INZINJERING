@@ -8,6 +8,27 @@ param(
 
 $ErrorActionPreference = "Continue"
 
+# Sakrij crni PowerShell host (kao Inno/Chrome updater — samo UI dijalog).
+function Hide-HostConsole {
+  try {
+    if (-not ("Native.Win32Console" -as [type])) {
+      Add-Type -Namespace Native -Name Win32Console -MemberDefinition @"
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        public static extern System.IntPtr GetConsoleWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+"@
+    }
+    $hwnd = [Native.Win32Console]::GetConsoleWindow()
+    if ($hwnd -ne [System.IntPtr]::Zero) {
+      [void][Native.Win32Console]::ShowWindow($hwnd, 0)
+    }
+  } catch { }
+}
+if (-not $Quiet) {
+  Hide-HostConsole
+}
+
 $bundleName = "TcmInzenjering.bundle"
 $bricsBundleName = "TcmInzenjering.BricsCAD.bundle"
 $appName = "TcmInzenjering"
@@ -78,50 +99,105 @@ function Get-CadProcessSummary {
 }
 
 function Wait-ForCadClosed {
-    while ($true) {
-        $summary = Get-CadProcessSummary
-        if (-not $summary) {
-            return $true
-        }
-
-        Write-Host "Pokrenuto: $summary - sacuvaj i zatvori pre instalacije." -ForegroundColor Yellow
-
-        if ($Quiet) {
-            Write-Host "GRESKA: AutoCAD/BricsCAD je otvoren. Zatvorite ga pa ponovo pokrenite instalaciju (ili bez -Quiet)." -ForegroundColor Red
-            return $false
-        }
-
-        $msgClose = "Radi instalacije nove verzije plugina potrebno je zatvoriti AutoCAD (i BricsCAD ako je otvoren)." +
-            $nl + $nl +
-            "Trenutno pokrenuto: $summary" +
-            $nl + $nl +
-            "Sacuvajte crteze, zatvorite program, zatim kliknite OK."
-
-        $answer = Show-UiMessage -Icon Warning -Buttons OKCancel -Message $msgClose
-        if ($answer -eq [System.Windows.Forms.DialogResult]::Cancel) {
-            Write-Host "Instalacija otkazana (AutoCAD nije zatvoren)." -ForegroundColor Yellow
-            return $false
-        }
-
-        Start-Sleep -Milliseconds 800
-
-        $summary = Get-CadProcessSummary
-        if (-not $summary) {
-            return $true
-        }
-
-        $msgRetry = "AutoCAD/BricsCAD je i dalje pokrenut ($summary)." +
-            $nl + $nl +
-            "DLL je zakljucan dok je program otvoren." +
-            $nl + $nl +
-            "Zatvorite ga pa izaberite Pokusaj ponovo."
-
-        $retry = Show-UiMessage -Icon Warning -Buttons RetryCancel -Message $msgRetry
-        if ($retry -eq [System.Windows.Forms.DialogResult]::Cancel) {
-            Write-Host "Instalacija otkazana." -ForegroundColor Yellow
-            return $false
-        }
+    $summary = Get-CadProcessSummary
+    if (-not $summary) {
+        return $true
     }
+
+    if ($Quiet) {
+        Write-Host "GRESKA: AutoCAD/BricsCAD je otvoren ($summary). Zatvorite ga pa ponovo pokrenite instalaciju." -ForegroundColor Red
+        return $false
+    }
+
+    Hide-HostConsole
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    Add-Type -AssemblyName System.Drawing | Out-Null
+
+    $script:WaitCancelled = $false
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = $uiTitle
+    $form.ClientSize = New-Object System.Drawing.Size(520, 180)
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $true
+    $form.TopMost = $true
+    $form.ShowInTaskbar = $true
+    $form.BackColor = [System.Drawing.Color]::FromArgb(8, 28, 72)
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Dock = "Top"
+    $lbl.Height = 70
+    $lbl.Padding = New-Object System.Windows.Forms.Padding(14, 12, 14, 4)
+    $lbl.ForeColor = [System.Drawing.Color]::White
+    $lbl.BackColor = [System.Drawing.Color]::Transparent
+    $lbl.Text = "AutoCAD/BricsCAD je otvoren. Sacuvajte crteze i zatvorite program." + $nl +
+                "Instalacija ce se nastaviti automatski (nema crnog PowerShell prozora)."
+
+    $status = New-Object System.Windows.Forms.Label
+    $status.Dock = "Top"
+    $status.Height = 36
+    $status.Padding = New-Object System.Windows.Forms.Padding(14, 0, 14, 0)
+    $status.ForeColor = [System.Drawing.Color]::FromArgb(176, 212, 232)
+    $status.BackColor = [System.Drawing.Color]::Transparent
+    $status.Text = "Cekam: $summary"
+
+    $bar = New-Object System.Windows.Forms.ProgressBar
+    $bar.Dock = "Top"
+    $bar.Height = 18
+    $bar.Style = "Marquee"
+    $bar.MarqueeAnimationSpeed = 35
+
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = "Otkazi"
+    $cancel.Width = 100
+    $cancel.Height = 28
+    $cancel.Dock = "Right"
+    $cancel.FlatStyle = "Flat"
+    $cancel.BackColor = [System.Drawing.Color]::FromArgb(0, 140, 200)
+    $cancel.ForeColor = [System.Drawing.Color]::White
+    $cancel.Add_Click({
+        $script:WaitCancelled = $true
+        $cancel.Enabled = $false
+        $status.Text = "Otkazivanje..."
+    })
+
+    $row = New-Object System.Windows.Forms.Panel
+    $row.Dock = "Bottom"
+    $row.Height = 36
+    $row.Padding = New-Object System.Windows.Forms.Padding(14, 4, 14, 8)
+    $row.BackColor = [System.Drawing.Color]::Transparent
+    $row.Controls.Add($cancel)
+
+    $form.Controls.Add($row)
+    $form.Controls.Add($bar)
+    $form.Controls.Add($status)
+    $form.Controls.Add($lbl)
+    $form.Add_FormClosing({
+        param($s, $e)
+        if (-not $script:WaitCancelled) { $script:WaitCancelled = $true }
+    })
+
+    $form.Show()
+    $form.Activate()
+    [System.Windows.Forms.Application]::DoEvents()
+
+    while (-not $script:WaitCancelled) {
+        Hide-HostConsole
+        $summary = Get-CadProcessSummary
+        if (-not $summary) {
+            Start-Sleep -Milliseconds 800
+            try { $form.Close() } catch { }
+            return $true
+        }
+
+        $status.Text = "Cekam zatvaranje: $summary"
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 800
+    }
+
+    try { $form.Close() } catch { }
+    return $false
 }
 
 function Deploy-Bundle {

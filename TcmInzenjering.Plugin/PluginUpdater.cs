@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -52,14 +51,7 @@ internal static class PluginUpdater
             File.WriteAllText(metaPath, JsonSerializer.Serialize(meta, JsonOptions), Encoding.UTF8);
             File.WriteAllText(scriptPath, BuildUpdateScript(metaPath), Encoding.UTF8);
 
-            var start = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Normal
-            };
-            Process.Start(start);
+            HiddenPowerShell.StartFile(scriptPath);
 
             message =
                 "Pokrenut je prozor preuzimanja. Nastavite rad u AutoCAD-u." +
@@ -78,6 +70,7 @@ internal static class PluginUpdater
     {
         var escapedMeta = metaPath.Replace("'", "''");
         return $$"""
+{{HiddenPowerShell.HideConsoleSnippet}}
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
 Add-Type -AssemblyName System.Drawing | Out-Null
 $ErrorActionPreference = "Stop"
@@ -276,7 +269,7 @@ if (-not (Test-Path -LiteralPath $setup)) {
   exit 1
 }
 
-# --- Cekaj zatvaranje CAD-a u pozadini; korisnik moze da nastavi rad ---
+# --- Cekaj zatvaranje CAD-a u pozadini (samo branded UI, bez konzole) ---
 $running = Get-CadRunning
 if ($running.Count -gt 0) {
   $label.Text = "Nadogradnja ceka zatvaranje AutoCAD-a"
@@ -284,25 +277,20 @@ if ($running.Count -gt 0) {
   $bar.Style = "Marquee"
   $bar.MarqueeAnimationSpeed = 40
   $cancelBtn.Visible = $true
-  $form.WindowState = "Minimized"
+  # Ostaje vidljiv branded prozor (ne MessageBox + crna konzola).
+  $form.WindowState = "Normal"
+  $form.Show()
+  $form.Activate()
   [System.Windows.Forms.Application]::DoEvents()
 
-  Show-Msg (
-    "Installer v$version je preuzet." + $nl + $nl +
-    "Mozete nastaviti da radite u AutoCAD-u." + $nl + $nl +
-    "Instalacija ce se automatski zavrsiti kada zatvorite AutoCAD/BricsCAD." + $nl +
-    "(Nema potrebe da gasite program odmah.)" + $nl + $nl +
-    "Prozor nadogradnje ostaje u taskbaru dok ceka."
-  ) "Info"
-
-  $form.WindowState = "Minimized"
   while (-not $script:CancelWait) {
+    Hide-HostConsole
     $running = Get-CadRunning
     if ($running.Count -eq 0) { break }
     $names = ($running | Group-Object ProcessName | ForEach-Object { "$($_.Name).exe" }) -join ", "
     $status.Text = "Cekam zatvaranje: $names  —  mozes nastaviti rad."
     [System.Windows.Forms.Application]::DoEvents()
-    Start-Sleep -Milliseconds 1500
+    Start-Sleep -Milliseconds 800
   }
 
   if ($script:CancelWait) {
@@ -323,7 +311,8 @@ $bar.MarqueeAnimationSpeed = 30
 Start-Sleep -Seconds 2
 
 try {
-  $p = Start-Process -FilePath $setup -ArgumentList "--silent" -PassThru -Wait
+  # WinExe installer — bez nove konzole.
+  $p = Start-Process -FilePath $setup -ArgumentList "--silent" -WindowStyle Normal -PassThru -Wait
   if ($p.ExitCode -ne 0) {
     try { $form.Close() } catch { }
     Show-Msg ("Instalacija nije uspela (exit $($p.ExitCode))." + $nl + "Pokrenite installer rucno:" + $nl + $setup) "Error"

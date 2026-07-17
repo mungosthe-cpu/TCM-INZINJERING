@@ -189,7 +189,7 @@
                 <TextBox Grid.Row="1" Grid.Column="1" x:Name="DepressionLenBox" Height="26"/>
               </Grid>
             </Expander>
-            <Expander Header="Contour Smoothing" IsExpanded="True" Margin="0,0,0,10">
+            <Expander Header="Contour Smoothing" IsExpanded="True" Margin="0,0,0,6">
               <StackPanel Margin="8">
                 <CheckBox x:Name="SmoothBox" Content="Smooth Contours" Margin="0,0,0,8"
                           Checked="OnSmoothChanged" Unchecked="OnSmoothChanged"/>
@@ -214,6 +214,40 @@
                   <TextBlock x:Name="SmoothFactorLbl" Text="50" Margin="0,4,0,0" HorizontalAlignment="Center"/>
                 </StackPanel>
               </StackPanel>
+            </Expander>
+
+            <Expander Header="Kotne oznake (izohipse)" IsExpanded="True" Margin="0,0,0,10">
+              <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="160"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Font:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <ComboBox Grid.Column="1" Grid.ColumnSpan="2" x:Name="ContourLabelFontBox"
+                          Height="26" Margin="0,0,0,8" IsEditable="True"
+                          VerticalContentAlignment="Center"/>
+                <TextBlock Grid.Row="1" Text="Visina teksta:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                         x:Name="ContourLabelHeightBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Text="Decimale:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                         x:Name="ContourLabelDecimalsBox" Height="26" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="3" Text="Boja:" VerticalAlignment="Center" Margin="0,0,0,8"/>
+                <Button Grid.Row="3" Grid.Column="1" x:Name="ContourLabelColorBtn"
+                        Height="26" Margin="0,0,8,8" HorizontalAlignment="Stretch"
+                        Click="OnContourLabelColorClick"/>
+                <CheckBox Grid.Row="4" Grid.ColumnSpan="3" x:Name="ContourLabelMaskBox"
+                          Content="Maska pozadine (ispis između linije izohipse)"
+                          Margin="0,4,0,0"/>
+              </Grid>
             </Expander>
 
             <TextBlock Text="Contour Display" FontWeight="SemiBold" Margin="0,0,0,6"/>

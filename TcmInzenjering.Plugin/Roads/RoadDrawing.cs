@@ -1,6 +1,7 @@
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
+using TcmInzenjering.Plugin.Roads.CrossAxis;
 
 namespace TcmInzenjering.Plugin.Roads;
 
@@ -76,9 +77,12 @@ internal static class RoadDrawing
         var index = 0;
         foreach (var element in axis.Elements)
         {
-            Entity entity = element.Type == AlignmentElementType.Tangent
-                ? CreateLine(element)
-                : CreateArc(element);
+            Entity entity = element.Type switch
+            {
+                AlignmentElementType.Tangent => CreateLine(element),
+                AlignmentElementType.Spiral => CreateSpiralPolyline(element),
+                _ => CreateArc(element)
+            };
 
             entity.Layer = AxisLayerName;
             entity.Color = ToAciColor(axisColorIndex);
@@ -251,6 +255,162 @@ internal static class RoadDrawing
         return count;
     }
 
+    /// <summary>
+    /// Jedna ručno dodata poprečna osa — isti sloj, boja, font i raspored kao intervalne stacionaže.
+    /// </summary>
+    internal static Line DrawManualCrossAxisStation(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        StationLabelOptions options,
+        string axisName,
+        double station,
+        double leftWidth,
+        double rightWidth,
+        string namePart,
+        int crossAxisNumber)
+    {
+        var point = axis.GetPointAtStation(station);
+        var direction = axis.SampleDirectionAtStation(station);
+        if (point is null || direction is null)
+        {
+            throw new InvalidOperationException("Nevalidna stacionaža za poprečnu osu.");
+        }
+
+        EnsureLayer(tr, modelSpace.Database, StationLayerName, Color.FromColorIndex(ColorMethod.ByAci, 3));
+        EnsureRegApp(tr, modelSpace.Database);
+        StationFontPreferences.Load();
+        var textStyleId = StationTextStyleHelper.Ensure(tr, modelSpace.Database, StationFontPreferences.FontFileName);
+
+        var leftNormal = GetSideNormal(direction.Value, 1.0);
+        var labelSideNormal = GetSideNormal(direction.Value, options.LabelSideSign);
+        var onCurve = IsStationWithinArc(axis, station);
+        var markColor = onCurve
+            ? ToAciColor(options.SegmentLabelColorIndex)
+            : ToAciColor(options.StationTickColorIndex);
+        var textColor = onCurve
+            ? ToAciColor(options.SegmentLabelColorIndex)
+            : ToAciColor(options.StationTextColorIndex);
+
+        var tickStart = point.Value - leftNormal * rightWidth;
+        var tickEnd = point.Value + leftNormal * leftWidth;
+        var textTickEnd = options.LabelSideSign >= 0 ? tickEnd : tickStart;
+
+        var tick = new Line(tickStart, tickEnd)
+        {
+            Layer = StationLayerName,
+            Color = markColor
+        };
+        modelSpace.AppendEntity(tick);
+        tr.AddNewlyCreatedDBObject(tick, true);
+        CrossAxisXData.AttachStationTickWithCrossAxis(tick, axisName, station, crossAxisNumber);
+
+        var textRotation = GetPerpendicularLabelRotation(direction.Value, options.LabelSideSign);
+        var relativeStation = Math.Max(0, station - options.StartStation);
+        var lineSpacing = options.TextHeight * 1.35;
+        var roadDir = direction.Value.Length > 1e-9 ? direction.Value.GetNormal() : Vector3d.XAxis;
+        var basePos = textTickEnd + labelSideNormal * (StationTextGapFromTick + options.TextHeight * 0.25);
+        var namePosition = basePos - roadDir * (lineSpacing * 0.5);
+        var chainagePosition = basePos + roadDir * (lineSpacing * 0.5);
+        var chainagePart = FormatChainage(relativeStation, options.ChainageFormat);
+
+        var nameText = CreateStationDbText(
+            namePart,
+            namePosition,
+            options.TextHeight,
+            textColor,
+            textRotation,
+            textStyleId,
+            modelSpace.Database);
+        modelSpace.AppendEntity(nameText);
+        tr.AddNewlyCreatedDBObject(nameText, true);
+        RoadXData.AttachStationLabel(nameText, axisName, RoadXData.RoleText, station);
+
+        var chainageText = CreateStationDbText(
+            chainagePart,
+            chainagePosition,
+            options.TextHeight,
+            textColor,
+            textRotation,
+            textStyleId,
+            modelSpace.Database);
+        modelSpace.AppendEntity(chainageText);
+        tr.AddNewlyCreatedDBObject(chainageText, true);
+        RoadXData.AttachStationLabel(chainageText, axisName, RoadXData.RoleChainage, station);
+
+        return tick;
+    }
+
+    /// <summary>
+    /// Oznake za ručno dodatu poprečnu osu — isti sloj, font, boja i položaj kao intervalne stacionaže.
+    /// </summary>
+    internal static void CreateManualCrossAxisStationLabels(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        StationLabelOptions options,
+        string axisName,
+        double station,
+        double leftWidth,
+        double rightWidth,
+        string namePart)
+    {
+        var point = axis.GetPointAtStation(station);
+        var direction = axis.SampleDirectionAtStation(station);
+        if (point is null || direction is null)
+        {
+            return;
+        }
+
+        EnsureLayer(tr, modelSpace.Database, StationLayerName, Color.FromColorIndex(ColorMethod.ByAci, 3));
+        EnsureRegApp(tr, modelSpace.Database);
+        StationFontPreferences.Load();
+        var textStyleId = StationTextStyleHelper.Ensure(tr, modelSpace.Database, StationFontPreferences.FontFileName);
+
+        var leftNormal = GetSideNormal(direction.Value, 1.0);
+        var labelSideNormal = GetSideNormal(direction.Value, options.LabelSideSign);
+        var onCurve = IsStationWithinArc(axis, station);
+        var textColor = onCurve
+            ? ToAciColor(options.SegmentLabelColorIndex)
+            : ToAciColor(options.StationTextColorIndex);
+
+        var textTickEnd = options.LabelSideSign >= 0
+            ? point.Value + leftNormal * leftWidth
+            : point.Value - leftNormal * rightWidth;
+        var textRotation = GetPerpendicularLabelRotation(direction.Value, options.LabelSideSign);
+        var relativeStation = Math.Max(0, station - options.StartStation);
+        var lineSpacing = options.TextHeight * 1.35;
+        var roadDir = direction.Value.Length > 1e-9 ? direction.Value.GetNormal() : Vector3d.XAxis;
+        var basePos = textTickEnd + labelSideNormal * (StationTextGapFromTick + options.TextHeight * 0.25);
+        var namePosition = basePos - roadDir * (lineSpacing * 0.5);
+        var chainagePosition = basePos + roadDir * (lineSpacing * 0.5);
+        var chainagePart = FormatChainage(relativeStation, options.ChainageFormat);
+
+        var nameText = CreateStationDbText(
+            namePart,
+            namePosition,
+            options.TextHeight,
+            textColor,
+            textRotation,
+            textStyleId,
+            modelSpace.Database);
+        modelSpace.AppendEntity(nameText);
+        tr.AddNewlyCreatedDBObject(nameText, true);
+        RoadXData.AttachStationLabel(nameText, axisName, RoadXData.RoleText, station);
+
+        var chainageText = CreateStationDbText(
+            chainagePart,
+            chainagePosition,
+            options.TextHeight,
+            textColor,
+            textRotation,
+            textStyleId,
+            modelSpace.Database);
+        modelSpace.AppendEntity(chainageText);
+        tr.AddNewlyCreatedDBObject(chainageText, true);
+        RoadXData.AttachStationLabel(chainageText, axisName, RoadXData.RoleChainage, station);
+    }
+
     public static IReadOnlyList<double> CollectStationsForSync(RoadAxis axis, StationLabelOptions options) =>
         CollectStationValues(axis, options).OrderBy(static s => s).ToList();
 
@@ -263,9 +423,13 @@ internal static class RoadDrawing
 
         var stations = new HashSet<double>();
         var start = options.StartStation;
-        var end = options.EndStation > start + 1e-6
-            ? options.EndStation
-            : axis.Elements[^1].EndStation;
+        var geometricEnd = axis.Elements[^1].EndStation;
+        var end = geometricEnd;
+        if (options.EndStation > start + 1e-6)
+        {
+            // Ne skraćuj ispod stvarne geometrije (npr. posle izmene R).
+            end = Math.Max(options.EndStation, geometricEnd);
+        }
 
         if (options.EqualIntervalInBounds && options.WholeInterval)
         {
@@ -737,19 +901,34 @@ internal static class RoadDrawing
         return count;
     }
 
-    private static IReadOnlyList<string> BuildTangentNodeTableLines(TangentNodeInfo node) =>
-    [
-        $"T= {node.Number}",
-        $"x= {node.Pi.X:0.000}",
-        $"y= {node.Pi.Y:0.000}",
-        $"α= {FormatDegreesMinutesSeconds(node.DeflectionRadians)}",
-        $"R= {node.Radius:0.000}",
-        $"dl= {node.ArcLength:0.000}",
-        $"dk= {node.ArcLength:0.000}",
-        $"T1= {node.TangentLength1:0.000}",
-        $"T2= {node.TangentLength2:0.000}",
-        $"b= {node.ExternalDistance:0.000}"
-    ];
+    private static IReadOnlyList<string> BuildTangentNodeTableLines(TangentNodeInfo node)
+    {
+        var lines = new List<string>
+        {
+            $"T= {node.Number}",
+            $"x= {node.Pi.X:0.000}",
+            $"y= {node.Pi.Y:0.000}",
+            $"α= {FormatDegreesMinutesSeconds(node.DeflectionRadians)}",
+            $"R= {node.Radius:0.000}"
+        };
+
+        if (node.L1 > 1e-6)
+        {
+            lines.Add($"L1= {node.L1:0.000}");
+        }
+
+        if (node.L2 > 1e-6)
+        {
+            lines.Add($"L2= {node.L2:0.000}");
+        }
+
+        lines.Add($"dl= {node.ArcLength:0.000}");
+        lines.Add($"dk= {node.ArcLength:0.000}");
+        lines.Add($"T1= {node.TangentLength1:0.000}");
+        lines.Add($"T2= {node.TangentLength2:0.000}");
+        lines.Add($"b= {node.ExternalDistance:0.000}");
+        return lines;
+    }
 
     private static string FormatDegreesMinutesSeconds(double radians)
     {
@@ -948,6 +1127,16 @@ internal static class RoadDrawing
         Color color,
         double rotation,
         ObjectId textStyleId,
+        Database db) =>
+        CreateStationDbTextPublic(contents, alignmentPoint, height, color, rotation, textStyleId, db);
+
+    internal static DBText CreateStationDbTextPublic(
+        string contents,
+        Point3d alignmentPoint,
+        double height,
+        Color color,
+        double rotation,
+        ObjectId textStyleId,
         Database db)
     {
         var text = new DBText
@@ -996,6 +1185,24 @@ internal static class RoadDrawing
 
     private static Line CreateLine(AlignmentElement element) =>
         new(element.Start, element.End);
+
+    private static Polyline CreateSpiralPolyline(AlignmentElement element)
+    {
+        var pts = element.SpiralPoints;
+        if (pts is null || pts.Count < 2)
+        {
+            pts = new[] { element.Start, element.End };
+        }
+
+        var pl = new Polyline(pts.Count);
+        for (var i = 0; i < pts.Count; i++)
+        {
+            pl.AddVertexAt(i, new Point2d(pts[i].X, pts[i].Y), 0, 0, 0);
+        }
+
+        pl.Elevation = pts[0].Z;
+        return pl;
+    }
 
     private static Arc CreateArc(AlignmentElement element)
     {

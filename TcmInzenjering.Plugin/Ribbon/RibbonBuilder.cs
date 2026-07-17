@@ -14,13 +14,13 @@ internal static class RibbonBuilder
     public const string TabTitle = "TCM-INŽINJERING";
 
     public const string SituacijaTabId = "TCM_SITUACIJA_TAB";
-    public const string SituacijaTabTitle = "Situacija";
+    public const string SituacijaTabTitle = "Situacija-TCM";
 
     public const string TerenTabId = "TCM_TEREN_TAB";
-    public const string TerenTabTitle = "Teren";
+    public const string TerenTabTitle = "Teren-TCM";
 
     public const string PoduzniProfilTabId = "TCM_PODUZNI_PROFIL_TAB";
-    public const string PoduzniProfilTabTitle = "Poduzni profil";
+    public const string PoduzniProfilTabTitle = "Poduzni-TCM";
 
     /// <summary>Civil kontekstualni tab — „Tin Surface: ime“.</summary>
     public const string TinSurfaceTabId = "TCM_TIN_SURFACE_TAB";
@@ -214,7 +214,7 @@ internal static class RibbonBuilder
 
         AddPanel(tab, "TEREN",
             CreateModuleButton(
-                "TEREN",
+                "Teren-TCM",
                 "Crtanje 3D terena od tacaka (3DFACE / TIN).",
                 "teren",
                 TerenTabId,
@@ -222,7 +222,7 @@ internal static class RibbonBuilder
 
         AddPanel(tab, "SITUACIJA",
             CreateModuleButton(
-                "SITUACIJA",
+                "Situacija-TCM",
                 "Otvara alate za situacioni plan (osovina, stacionaza...).",
                 "situacija",
                 SituacijaTabId,
@@ -230,7 +230,7 @@ internal static class RibbonBuilder
 
         AddPanel(tab, "PODUZNI PROFIL",
             CreateModuleButton(
-                "PODUZNI PROFIL",
+                "Poduzni-TCM",
                 "Otvara alate za poduzni profil (tabela + teren).",
                 "poduzni_profil",
                 PoduzniProfilTabId,
@@ -283,11 +283,7 @@ internal static class RibbonBuilder
                 "Ponovo gradi TIN i border iz tacaka aktivnog terena.",
                 "TCMTERFACE ",
                 "projekcija"),
-            CreateCommandButton(
-                "Add Line",
-                "Civil Add Line — nova TIN ivica izmedju temena / duz linije.",
-                "TCMTERADDLINE ",
-                "osovina"),
+            CreateAddTinLineSplitButton(),
             CreateCommandButton(
                 "Swap 3DFACE",
                 "Zamenjuje zajednicku ivicu (Civil Swap Edge).",
@@ -359,11 +355,7 @@ internal static class RibbonBuilder
                 "Delaunay TIN — tacke + breakline + granica + sacuvani swap/delete.",
                 "TCMTERFACE ",
                 "projekcija"),
-            CreateCommandButton(
-                "Add Line",
-                "Civil Add Line — forsira TIN ivicu izmedju temena / duz linije.",
-                "TCMTERADDLINE ",
-                "osovina"),
+            CreateAddTinLineSplitButton(),
             CreateCommandButton(
                 "Swap 3DFACE",
                 "Zamenjuje zajednicku ivicu dva trougla (kao Civil 3D Swap Edge).",
@@ -444,6 +436,11 @@ internal static class RibbonBuilder
 
         AddPanel(tab, "Osovina",
             CreateCommandButton("PLO u tangentni poligon", "Pretvara polylinu u osovinu.", "TCMPLO2TAN ", "plo2tan"),
+            CreateCommandButton(
+                "Rucno uredjivanje zaobljenja",
+                "UredjenjeKrivine — Auto/Ručno (LRL, LR, RL, LL); pick R sa crteza (✕).",
+                "TCMZAOUREDI ",
+                "osovina"),
             CreateCommandButton("Stacionaze", "Oznake stacionaze duz ose.", "TCMSTACOZN ", "staco"),
             CreateCommandButton("Azuriraj stac.", "Azurira stacionaze posle pomeranja.", "TCMSTACAZUR ", "refresh"));
 
@@ -455,7 +452,8 @@ internal static class RibbonBuilder
             CreateCommandButton("Projekcija na teren", "Projektuje osovinu na 3D teren.", "TCMPROJTER ", "projekcija"));
 
         AddPanel(tab, "Poprecne ose",
-            CreateCommandButton("Pozicija pop. osa", "Polozaj oznaka i stacionaza.", "TCMPOPOSPOZ ", "staco"));
+            CreateCommandButton("Pozicija pop. osa", "Polozaj oznaka i stacionaza.", "TCMPOPOSPOZ ", "staco"),
+            CreateCrossAxisEditSplitButton());
 
         AddPanel(tab, "Zatvori",
             CreateCloseButton(
@@ -511,6 +509,123 @@ internal static class RibbonBuilder
         }
 
         tab.Panels.Add(new RibbonPanel { Source = panelSource });
+    }
+
+    /// <summary>
+    /// Uređivanje pop. osa: Dodavanje (TCMPOPSTAC) / Brisanje (TCMPOPBRISI).
+    /// </summary>
+    private static RibbonSplitButton CreateCrossAxisEditSplitButton()
+    {
+        const string icon = "staco";
+        var split = new RibbonSplitButton
+        {
+            Id = "TCM_CROSS_AXIS_EDIT",
+            Text = "Uredjivanje pop. osa",
+            Description = "Dodavanje i brisanje poprecnih osa na situaciji.",
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            IsSplit = true,
+            IsSynchronizedWithCurrentItem = false,
+            ListButtonStyle = Autodesk.Private.Windows.RibbonListButtonStyle.SplitButton
+        };
+
+        var dodavanje = CreateSplitMenuCommand(
+            "Dodavanje poprecnih osa",
+            "Crtanje poprecnih osa na stacionazi (TCMPOPSTAC).",
+            "TCMPOPSTAC ",
+            icon);
+        var brisanje = CreateSplitMenuCommand(
+            "Brisanje poprecnih osa",
+            "Brise poprecne ose preko tabele ili izbora na crtezu (TCMPOPBRISI).",
+            "TCMPOPBRISI ",
+            "refresh");
+
+        split.Items.Add(dodavanje);
+        split.Items.Add(brisanje);
+        split.Current = dodavanje;
+
+        var large = RibbonIconLoader.LoadLarge(icon)
+                    ?? RibbonIconLoader.LoadLarge("projekcija");
+        var small = RibbonIconLoader.LoadSmall(icon) ?? large;
+        if (large is not null)
+        {
+            split.LargeImage = large;
+        }
+
+        if (small is not null)
+        {
+            split.Image = small;
+        }
+
+        split.ToolTip = new RibbonToolTip
+        {
+            Title = "Uredjivanje pop. osa",
+            Content = "Dodavanje / Brisanje poprecnih osa na situaciji."
+        };
+
+        return split;
+    }
+
+    /// <summary>
+    /// TIN edit: Add Line (jedan segment) / Add Continuous Line (lanac).
+    /// </summary>
+    private static RibbonSplitButton CreateAddTinLineSplitButton()
+    {
+        const string icon = "osovina";
+        var split = new RibbonSplitButton
+        {
+            Id = "TCM_ADD_TIN_LINE",
+            Text = "Add Line",
+            Description = "Forsira TIN ivicu — jedna linija ili neprekidni lanac (Civil Add Line).",
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            IsSplit = true,
+            IsSynchronizedWithCurrentItem = true,
+            ListButtonStyle = Autodesk.Private.Windows.RibbonListButtonStyle.SplitButton
+        };
+
+        var addLine = CreateSplitMenuCommand(
+            "Add Line",
+            "Jedna TIN ivica izmedju dva temena (ili duz linije).",
+            "TCMTERADDLINE ",
+            icon);
+        var addContinuous = CreateSplitMenuCommand(
+            "Add Continuous Line",
+            "Neprekidni lanac TIN ivica — biraj temena redom, Enter = kraj lanca.",
+            "TCMTERADDCLINE ",
+            icon);
+
+        split.Items.Add(addLine);
+        split.Items.Add(addContinuous);
+        split.Current = addLine;
+
+        var large = RibbonIconLoader.LoadNative($"{icon}_32")
+                    ?? RibbonIconLoader.LoadLarge(icon)
+                    ?? RibbonIconLoader.LoadLarge("projekcija");
+        var small = RibbonIconLoader.LoadNative($"{icon}_16")
+                    ?? RibbonIconLoader.LoadSmall(icon)
+                    ?? large;
+        if (large is not null)
+        {
+            split.LargeImage = large;
+        }
+
+        if (small is not null)
+        {
+            split.Image = small;
+        }
+
+        split.ToolTip = new RibbonToolTip
+        {
+            Title = "Add Line",
+            Content = "Add Line / Add Continuous Line — forsira TIN ivice."
+        };
+
+        return split;
     }
 
     /// <summary>

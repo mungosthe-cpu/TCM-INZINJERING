@@ -15,7 +15,9 @@ internal static class AxisGeometryUpdater
             return false;
         }
 
+        var nodeRadii = CornerRadiusStore.Load(tr, db, axisName);
         var changed = false;
+        var nodeNumber = 0;
         for (var i = 1; i < entries.Count - 1; i++)
         {
             if (entries[i].Element.Type != AlignmentElementType.Arc)
@@ -23,7 +25,17 @@ internal static class AxisGeometryUpdater
                 continue;
             }
 
-            if (TryReconcileCorner(entries[i - 1], entries[i], entries[i + 1], designRadius))
+            nodeNumber++;
+            // Preferiraj sačuvani per-čvor R, pa trenutni luk, pa globalni design R.
+            var cornerRadius = CornerRadiusStore.ResolveCornerRadius(nodeRadii, nodeNumber, 0);
+            if (cornerRadius <= 1e-6)
+            {
+                cornerRadius = entries[i].Element.Radius > 1e-6
+                    ? entries[i].Element.Radius
+                    : designRadius;
+            }
+
+            if (TryReconcileCorner(entries[i - 1], entries[i], entries[i + 1], cornerRadius))
             {
                 changed = true;
             }
@@ -45,6 +57,103 @@ internal static class AxisGeometryUpdater
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Ručno uređivanje zaobljenja na jednom čvoru (TS / T1…).
+    /// </summary>
+    public static bool ApplyCornerRadius(
+        Transaction tr,
+        Database db,
+        string axisName,
+        int arcElementIndex,
+        double requestedRadius,
+        double startStation,
+        out string? error)
+    {
+        error = null;
+        var entries = LoadAxisEntities(tr, db, axisName);
+        if (arcElementIndex <= 0 || arcElementIndex >= entries.Count - 1)
+        {
+            error = "Nevalidan indeks krivine.";
+            return false;
+        }
+
+        var arcEntry = entries[arcElementIndex];
+        if (arcEntry.Element.Type != AlignmentElementType.Arc)
+        {
+            error = "Izabrani element nije luk.";
+            return false;
+        }
+
+        if (!TryReconcileCorner(
+                entries[arcElementIndex - 1],
+                arcEntry,
+                entries[arcElementIndex + 1],
+                requestedRadius))
+        {
+            // TryReconcileCorner vraća false i kada nema promene — proveri da li je geometrija validna.
+            if (!TryBuildPreview(
+                    entries[arcElementIndex - 1],
+                    entries[arcElementIndex + 1],
+                    requestedRadius,
+                    out _))
+            {
+                error =
+                    "Zaobljenje nije moguce sa unetim R (prekratke tangente ili prevelik radijus).";
+                return false;
+            }
+        }
+
+        var elements = entries.Select(entry => entry.Element).ToList();
+        ArcOrientation.OrientArcsToChainage(elements);
+        AssignStations(elements, startStation);
+
+        for (var i = 0; i < entries.Count; i++)
+        {
+            entries[i].Element = elements[i];
+            WriteElement(tr, entries[i], axisName, i);
+        }
+
+        return true;
+    }
+
+    private static bool TryBuildPreview(
+        AxisEntityEntry prevEntry,
+        AxisEntityEntry nextEntry,
+        double designRadius,
+        out double appliedRadius)
+    {
+        appliedRadius = 0;
+        if (prevEntry.Entity is not Line prevLine || nextEntry.Entity is not Line nextLine)
+        {
+            return false;
+        }
+
+        var p0 = TangentArcGeometry.To2d(prevLine.StartPoint);
+        var p1 = TangentArcGeometry.To2d(prevLine.EndPoint);
+        var p2 = TangentArcGeometry.To2d(nextLine.StartPoint);
+        var p3 = TangentArcGeometry.To2d(nextLine.EndPoint);
+        if (!TangentArcGeometry.TryIntersectLines(p0, p1, p2, p3, out var pi))
+        {
+            return false;
+        }
+
+        var inDir = new Vector2d(p1.X - p0.X, p1.Y - p0.Y);
+        var outDir = new Vector2d(p3.X - p2.X, p3.Y - p2.Y);
+        var incomingLength = Math.Abs(new Vector2d(p0.X - pi.X, p0.Y - pi.Y).DotProduct(inDir.GetNormal()));
+        var outgoingLength = Math.Abs(new Vector2d(p3.X - pi.X, p3.Y - pi.Y).DotProduct(outDir.GetNormal()));
+        return TangentArcGeometry.TryBuildCornerArc(
+            pi,
+            inDir,
+            outDir,
+            designRadius,
+            out _,
+            out _,
+            out appliedRadius,
+            out _,
+            incomingLength * 0.98,
+            outgoingLength * 0.98);
     }
 
     private static bool TryReconcileCorner(

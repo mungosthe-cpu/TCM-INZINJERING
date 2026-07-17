@@ -1,4 +1,6 @@
+using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
+using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace TcmInzenjering.Plugin.Roads.Profile;
 
@@ -7,6 +9,10 @@ namespace TcmInzenjering.Plugin.Roads.Profile;
 /// </summary>
 internal static class ProfileViewRefresh
 {
+    private static readonly object Gate = new();
+    private static readonly HashSet<string> PendingAxes = new(StringComparer.OrdinalIgnoreCase);
+    private static bool _idleHooked;
+
     public static int RefreshIfExists(Transaction tr, Database db, string axisName)
     {
         var views = ProfileViewStore.LoadAllForAxis(tr, db, axisName);
@@ -77,5 +83,88 @@ internal static class ProfileViewRefresh
         }
 
         return refreshed;
+    }
+
+    /// <summary>
+    /// Odloži pun redraw profila na Idle — OK u TCMPOPSTAC ostaje odzivan.
+    /// </summary>
+    public static void ScheduleIfExists(Document doc, string axisName)
+    {
+        if (doc is null || string.IsNullOrWhiteSpace(axisName))
+        {
+            return;
+        }
+
+        try
+        {
+            using var tr = doc.Database.TransactionManager.StartTransaction();
+            var hasViews = ProfileViewStore.LoadAllForAxis(tr, doc.Database, axisName).Count > 0;
+            tr.Commit();
+            if (!hasViews)
+            {
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        lock (Gate)
+        {
+            PendingAxes.Add(axisName);
+            if (_idleHooked)
+            {
+                return;
+            }
+
+            _idleHooked = true;
+            AcApp.Idle += OnIdleRefresh;
+        }
+    }
+
+    private static void OnIdleRefresh(object? sender, EventArgs e)
+    {
+        string[] axes;
+        lock (Gate)
+        {
+            AcApp.Idle -= OnIdleRefresh;
+            _idleHooked = false;
+            axes = PendingAxes.ToArray();
+            PendingAxes.Clear();
+        }
+
+        if (axes.Length == 0)
+        {
+            return;
+        }
+
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var docLock = doc.LockDocument();
+            using var tr = doc.Database.TransactionManager.StartTransaction();
+            var refreshed = 0;
+            foreach (var axisName in axes)
+            {
+                refreshed += RefreshIfExists(tr, doc.Database, axisName);
+            }
+
+            tr.Commit();
+            if (refreshed > 0)
+            {
+                doc.Editor.WriteMessage(
+                    $"\nTCM-INZINJERING: Podužni profil osvežen ({refreshed}) — uključene nove poprečne ose.");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            doc.Editor.WriteMessage($"\nTCM-INZINJERING: greska pri osvezavanju profila - {ex.Message}");
+        }
     }
 }

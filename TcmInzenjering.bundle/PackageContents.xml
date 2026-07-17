@@ -5,7 +5,7 @@
   ProductType="Application"
   Name="TCM-INZINJERING"
   Description="TCM-INZINJERING - putevi, osovina i stacionaza."
-  AppVersion="1.1.13">
+  AppVersion="1.1.14">
   <CompanyDetails
     Name="TCM-INZINJERING"
     Url="https://github.com/mungosthe-cpu/TCM-INZINJERING"
@@ -26,11 +26,15 @@
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMZAOUREDI" Local="TCMZAOUREDI" />
+        <Command Global="TCMTERADDCLINE" Local="TCMTERADDCLINE" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
         <Command Global="TCMOSTAB" Local="TCMOSTAB" />
         <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMPOPSTAC" Local="TCMPOPSTAC" />
+        <Command Global="TCMPOPBRISI" Local="TCMPOPBRISI" />
         <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMPROJTER" Local="TCMPROJTER" />
         <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />
@@ -79,11 +83,15 @@
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMZAOUREDI" Local="TCMZAOUREDI" />
+        <Command Global="TCMTERADDCLINE" Local="TCMTERADDCLINE" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
         <Command Global="TCMOSTAB" Local="TCMOSTAB" />
         <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMPOPSTAC" Local="TCMPOPSTAC" />
+        <Command Global="TCMPOPBRISI" Local="TCMPOPBRISI" />
         <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMPROJTER" Local="TCMPROJTER" />
         <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />
@@ -132,11 +140,15 @@
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMZAOUREDI" Local="TCMZAOUREDI" />
+        <Command Global="TCMTERADDCLINE" Local="TCMTERADDCLINE" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
         <Command Global="TCMOSTAB" Local="TCMOSTAB" />
         <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMPOPSTAC" Local="TCMPOPSTAC" />
+        <Command Global="TCMPOPBRISI" Local="TCMPOPBRISI" />
         <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMPROJTER" Local="TCMPROJTER" />
         <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />
@@ -185,11 +197,15 @@
       LoadOnAutoCADStartup="True">
       <Commands GroupName="TCM-INZINJERING">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
+        <Command Global="TCMZAOUREDI" Local="TCMZAOUREDI" />
+        <Command Global="TCMTERADDCLINE" Local="TCMTERADDCLINE" />
         <Command Global="TCMSTACOZN" Local="TCMSTACOZN" />
         <Command Global="TCMSTACAZUR" Local="TCMSTACAZUR" />
         <Command Global="TCMOSINFO" Local="TCMOSINFO" />
         <Command Global="TCMOSTAB" Local="TCMOSTAB" />
         <Command Global="TCMPOPOSPOZ" Local="TCMPOPOSPOZ" />
+        <Command Global="TCMPOPSTAC" Local="TCMPOPSTAC" />
+        <Command Global="TCMPOPBRISI" Local="TCMPOPBRISI" />
         <Command Global="TCMSTACFONT" Local="TCMSTACFONT" />
         <Command Global="TCMPROJTER" Local="TCMPROJTER" />
         <Command Global="TCMTERTACKE" Local="TCMTERTACKE" />

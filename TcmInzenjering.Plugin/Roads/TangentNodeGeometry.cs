@@ -15,18 +15,46 @@ internal static class TangentNodeGeometry
         var number = 1;
         for (var i = 1; i < axis.Elements.Count - 1; i++)
         {
-            var arc = axis.Elements[i];
-            var prev = axis.Elements[i - 1];
-            var next = axis.Elements[i + 1];
-            if (arc.Type != AlignmentElementType.Arc ||
-                prev.Type != AlignmentElementType.Tangent ||
-                next.Type != AlignmentElementType.Tangent ||
-                arc.Radius < 1e-6)
+            if (axis.Elements[i].Type != AlignmentElementType.Arc ||
+                axis.Elements[i].Radius < 1e-6)
             {
                 continue;
             }
 
-            if (!TryCompute(prev, arc, next, number, i, out var node))
+            // Ulazna tangenta: preskoči spirale nalevo.
+            var prevIdx = i - 1;
+            double l1 = 0;
+            while (prevIdx >= 0 && axis.Elements[prevIdx].Type == AlignmentElementType.Spiral)
+            {
+                l1 += axis.Elements[prevIdx].Length;
+                prevIdx--;
+            }
+
+            // Izlazna tangenta: preskoči spirale nadesno.
+            var nextIdx = i + 1;
+            double l2 = 0;
+            while (nextIdx < axis.Elements.Count &&
+                   axis.Elements[nextIdx].Type == AlignmentElementType.Spiral)
+            {
+                l2 += axis.Elements[nextIdx].Length;
+                nextIdx++;
+            }
+
+            if (prevIdx < 0 || nextIdx >= axis.Elements.Count)
+            {
+                continue;
+            }
+
+            var prev = axis.Elements[prevIdx];
+            var next = axis.Elements[nextIdx];
+            var arc = axis.Elements[i];
+            if (prev.Type != AlignmentElementType.Tangent ||
+                next.Type != AlignmentElementType.Tangent)
+            {
+                continue;
+            }
+
+            if (!TryCompute(prev, arc, next, number, i, l1, l2, out var node))
             {
                 continue;
             }
@@ -44,6 +72,8 @@ internal static class TangentNodeGeometry
         AlignmentElement nextTangent,
         int number,
         int arcElementIndex,
+        double l1,
+        double l2,
         out TangentNodeInfo node)
     {
         node = null!;
@@ -56,8 +86,8 @@ internal static class TangentNodeGeometry
             return false;
         }
 
-        var inDir = (p1 - p0);
-        var outDir = (p3 - p2);
+        var inDir = p1 - p0;
+        var outDir = p3 - p2;
         if (inDir.Length < TangentArcGeometry.MinSegmentLength ||
             outDir.Length < TangentArcGeometry.MinSegmentLength)
         {
@@ -76,9 +106,10 @@ internal static class TangentNodeGeometry
         var radius = Math.Max(arc.Radius, TangentArcGeometry.MinSegmentLength);
         var half = deflection / 2.0;
         var tangentLength = radius * Math.Tan(half);
-        // Ako luk skraćuje T zbog dostupnog prostora, uzmi stvarni PC–PI / PI–PT.
-        var t1 = Distance2d(pi2d, TangentArcGeometry.To2d(arc.Start));
-        var t2 = Distance2d(pi2d, TangentArcGeometry.To2d(arc.End));
+
+        // T1/T2: od PI do kraja ulazne / početka izlazne tangente (= TS / ST).
+        var t1 = Distance2d(pi2d, p1);
+        var t2 = Distance2d(pi2d, p2);
         if (t1 < TangentArcGeometry.MinSegmentLength)
         {
             t1 = tangentLength;
@@ -94,14 +125,11 @@ internal static class TangentNodeGeometry
             ? radius * (1.0 / cosHalf - 1.0)
             : 0.0;
 
-        // Bisektrisa ka unutra (smer ka centru luka / ka PC–PT uglu π−α).
-        // Tabela mora ići NA SPOLJNU stranu krivine (nasuprot centru) — kao na referentnim crtežima.
         var toPc = inDir.Negate();
         var toPt = outDir;
         var towardArc = new Vector2d(toPc.X + toPt.X, toPc.Y + toPt.Y);
         if (towardArc.Length < 1e-9)
         {
-            // Fallback: od PI ka centru luka.
             var center2d = TangentArcGeometry.To2d(arc.Center);
             towardArc = new Vector2d(center2d.X - pi2d.X, center2d.Y - pi2d.Y);
         }
@@ -112,8 +140,6 @@ internal static class TangentNodeGeometry
         }
 
         towardArc = towardArc.GetNormal();
-
-        // Dodatna provera: smer ka centru luka mora biti istog znaka kao towardArc.
         var centerDelta = TangentArcGeometry.To2d(arc.Center) - pi2d;
         if (centerDelta.Length > 1e-9 && towardArc.DotProduct(centerDelta) < 0)
         {
@@ -121,6 +147,9 @@ internal static class TangentNodeGeometry
         }
 
         var exterior = towardArc.Negate();
+        var spiralExtra = l1 + l2;
+        var circularLen = Math.Max(arc.Length, 0);
+        var totalCurveLen = circularLen + spiralExtra;
 
         node = new TangentNodeInfo
         {
@@ -129,10 +158,12 @@ internal static class TangentNodeGeometry
             Pi = TangentArcGeometry.To3d(pi2d),
             DeflectionRadians = deflection,
             Radius = radius,
-            ArcLength = Math.Max(arc.Length, radius * deflection),
+            ArcLength = totalCurveLen > 1e-6 ? totalCurveLen : Math.Max(arc.Length, radius * deflection),
             TangentLength1 = t1,
             TangentLength2 = t2,
             ExternalDistance = external,
+            L1 = l1,
+            L2 = l2,
             OpenBisector = new Vector3d(exterior.X, exterior.Y, 0)
         };
         return true;

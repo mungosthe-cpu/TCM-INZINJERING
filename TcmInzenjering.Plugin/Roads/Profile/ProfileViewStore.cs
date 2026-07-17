@@ -36,6 +36,24 @@ internal sealed class ProfileViewData
             BetweenDivisor);
 
     /// <summary>
+    /// Tabeliranje: situacija = master (iste stacionaže i STA brojevi).
+    /// </summary>
+    public IReadOnlyList<double> CollectTabulationStations(Transaction tr, Database db) =>
+        CollectSituationStations(tr, db).Select(s => s.Station).ToList();
+
+    public IReadOnlyList<SituationStation> CollectSituationStations(Transaction tr, Database db) =>
+        ProfileTabulation.CollectSituationStations(
+            tr,
+            db,
+            AxisName,
+            StartStation,
+            EndStation,
+            TabulationMode,
+            StationTickInterval,
+            CrossAxisInterval > 1e-6 ? CrossAxisInterval : StationTickInterval,
+            BetweenDivisor);
+
+    /// <summary>
     /// Model: 1 crtezna jedinica ≈ 1 m papira pri H=1000 / V=1000.
     /// x = Δstac × (1000/H); y = Δkota × (1000/V).
     /// </summary>

@@ -35,10 +35,60 @@ public sealed partial class RoadCommands
     }
 
     /// <summary>
+    /// Ako u crtežu već postoje izohipse (TCM IZO), ponovo ih crta po trenutnom TIN-u/stilu.
+    /// Poziva se posle Swap / Delete / Add Line / rebuild.
+    /// </summary>
+    internal static bool RefreshContoursIfDrawn(bool writeMessage = false)
+    {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return false;
+        }
+
+        if (!DrawingHasContourEntities(doc.Database))
+        {
+            return false;
+        }
+
+        return ApplyCurrentContourStyleToDrawing(writeMessage);
+    }
+
+    private static bool DrawingHasContourEntities(Database db)
+    {
+        using var tr = db.TransactionManager.StartTransaction();
+        var modelSpace = (BlockTableRecord)tr.GetObject(
+            SymbolUtilityServices.GetBlockModelSpaceId(db),
+            OpenMode.ForRead);
+
+        foreach (ObjectId id in modelSpace)
+        {
+            if (tr.GetObject(id, OpenMode.ForRead) is not Entity entity || entity.IsErased)
+            {
+                continue;
+            }
+
+            if (TerrainContourXData.IsContour(entity))
+            {
+                tr.Commit();
+                return true;
+            }
+        }
+
+        tr.Commit();
+        return false;
+    }
+
+    /// <summary>
     /// Ponovo crta izohipse po trenutnom stilu. Poziva se i iz dijaloga podešavanja
     /// (bez LockDocument — isti modalni command kontekst).
     /// </summary>
-    internal static bool ApplyCurrentContourStyleToDrawing(bool writeMessage = true)
+    /// <param name="contoursOnlyIfPresent">
+    /// Ako je true (live Display), izohipse se brišu/crtaju samo ako već postoje u crtežu.
+    /// </param>
+    internal static bool ApplyCurrentContourStyleToDrawing(
+        bool writeMessage = true,
+        bool contoursOnlyIfPresent = false)
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         if (doc is null)
@@ -62,115 +112,127 @@ public sealed partial class RoadCommands
             var triangleComp = style.GetComponent("Triangles");
             var anyContourVisible = majorComp.Visible || minorComp.Visible || userComp.Visible;
             var userElevs = userComp.Visible ? style.ParseUserContours() : Array.Empty<double>();
+            var hadContours = DrawingHasContourEntities(db);
+            var updateContours = !contoursOnlyIfPresent || hadContours;
 
             using var tr = db.TransactionManager.StartTransaction();
             RoadDrawing.EnsureRegApp(tr, db);
 
-            // Display → Triangles / Border: sakrij/prikaži (ne briši TIN/border).
-            var faceVisCount = ApplyTerrainFaceVisibility(tr, db, triangleComp.Visible);
-            var borderComp = style.GetComponent("Border");
-            ApplyTerrainBorderVisibility(tr, db, borderComp.Visible && style.DisplayExteriorBorders);
+            var surfaceName = NamedTerrainSurfaceStore.GetActiveName(tr, db);
 
-            var faceParts = LoadTerrainFacePartsFromModel(tr, db);
+            // Display → Triangles / Border: sakrij/prikaži (ne briši TIN/border).
+            var faceVisCount = ApplyTerrainFaceVisibility(tr, db, triangleComp.Visible, surfaceName);
+            var borderComp = style.GetComponent("Border");
+            ApplyTerrainBorderVisibility(
+                tr, db, borderComp.Visible && style.DisplayExteriorBorders, surfaceName);
+
+            var faceParts = LoadTerrainFacePartsFromModel(tr, db, surfaceName);
             var triangles = faceParts.Count > 0
                 ? faceParts.Select(p => p.Triangle).ToList()
-                : LoadTerrainTrianglesFromModel(tr, db);
+                : LoadTerrainTrianglesFromModel(tr, db, surfaceName);
             if (triangles.Count == 0 && faceVisCount == 0)
             {
                 if (writeMessage)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema TCM 3DFACE terena. Prvo TCMTERFACE.");
+                        "\nTCM-INZINJERING: Nema TCM 3DFACE terena" +
+                        (string.IsNullOrWhiteSpace(surfaceName) ? "." : $" za „{surfaceName}“.") +
+                        " Prvo TCMTERFACE.");
                 }
 
                 tr.Commit();
                 return false;
             }
 
-            EnsureContourLayers(tr, db);
-            var erased = EraseEntitiesWithRole(tr, db, TerrainContourXData.RoleContour);
-
+            EnsureContourLayers(tr, db, surfaceName);
+            var erased = 0;
             var minorCount = 0;
             var majorCount = 0;
             var userCount = 0;
 
-            if (anyContourVisible && triangles.Count > 0)
+            if (updateContours)
             {
-                var paths = TerrainContourBuilder.Build(triangles, minor, major, baseElev, userElevs);
-                var modelSpace = (BlockTableRecord)tr.GetObject(
-                    SymbolUtilityServices.GetBlockModelSpaceId(db),
-                    OpenMode.ForWrite);
+                erased = EraseEntitiesWithRole(tr, db, TerrainContourXData.RoleContour, surfaceName);
 
-                foreach (var path in paths)
+                if (anyContourVisible && triangles.Count > 0)
                 {
-                    SurfaceComponentStyle comp;
-                    if (path.IsUser)
+                    var paths = TerrainContourBuilder.Build(triangles, minor, major, baseElev, userElevs);
+                    var modelSpace = (BlockTableRecord)tr.GetObject(
+                        SymbolUtilityServices.GetBlockModelSpaceId(db),
+                        OpenMode.ForWrite);
+
+                    foreach (var path in paths)
                     {
-                        if (!userComp.Visible)
+                        SurfaceComponentStyle comp;
+                        if (path.IsUser)
                         {
-                            continue;
+                            if (!userComp.Visible)
+                            {
+                                continue;
+                            }
+
+                            comp = userComp;
+                        }
+                        else if (path.IsMajor)
+                        {
+                            if (!majorComp.Visible)
+                            {
+                                continue;
+                            }
+
+                            comp = majorComp;
+                        }
+                        else
+                        {
+                            if (!minorComp.Visible)
+                            {
+                                continue;
+                            }
+
+                            comp = minorComp;
                         }
 
-                        comp = userComp;
-                    }
-                    else if (path.IsMajor)
-                    {
-                        if (!majorComp.Visible)
+                        var drawElevation = ResolveContourElevation(path.Elevation, style);
+                        var points = ContourSmoother.Apply(
+                            path.Points,
+                            style.SmoothContours,
+                            style.SmoothType,
+                            style.SmoothFactor);
+
+                        Entity entity;
+                        if (style.SmoothContours &&
+                            style.SmoothType == ContourSmoothType.SplineCurve &&
+                            points.Count >= 3)
                         {
-                            continue;
+                            entity = CreateContourSpline(points, drawElevation);
+                        }
+                        else
+                        {
+                            entity = CreateContourPolyline(points, drawElevation);
                         }
 
-                        comp = majorComp;
-                    }
-                    else
-                    {
-                        if (!minorComp.Visible)
+                        ApplyComponentStyle(tr, db, entity, comp, surfaceName);
+                        modelSpace.AppendEntity(entity);
+                        tr.AddNewlyCreatedDBObject(entity, true);
+                        TerrainContourXData.AttachContour(
+                            entity, path.Elevation, path.IsMajor || path.IsUser, surfaceName);
+                        if (path.IsUser)
                         {
-                            continue;
+                            userCount++;
                         }
-
-                        comp = minorComp;
-                    }
-
-                    var drawElevation = ResolveContourElevation(path.Elevation, style);
-                    var points = ContourSmoother.Apply(
-                        path.Points,
-                        style.SmoothContours,
-                        style.SmoothType,
-                        style.SmoothFactor);
-
-                    Entity entity;
-                    if (style.SmoothContours &&
-                        style.SmoothType == ContourSmoothType.SplineCurve &&
-                        points.Count >= 3)
-                    {
-                        entity = CreateContourSpline(points, drawElevation);
-                    }
-                    else
-                    {
-                        entity = CreateContourPolyline(points, drawElevation);
-                    }
-
-                    ApplyComponentStyle(tr, db, entity, comp);
-                    modelSpace.AppendEntity(entity);
-                    tr.AddNewlyCreatedDBObject(entity, true);
-                    TerrainContourXData.AttachContour(entity, path.Elevation, path.IsMajor || path.IsUser);
-                    if (path.IsUser)
-                    {
-                        userCount++;
-                    }
-                    else if (path.IsMajor)
-                    {
-                        majorCount++;
-                    }
-                    else
-                    {
-                        minorCount++;
+                        else if (path.IsMajor)
+                        {
+                            majorCount++;
+                        }
+                        else
+                        {
+                            minorCount++;
+                        }
                     }
                 }
             }
 
-            var analysis = ApplyTerrainAnalysisOverlays(tr, db, style, faceParts);
+            var analysis = ApplyTerrainAnalysisOverlays(tr, db, style, faceParts, surfaceName);
 
             tr.Commit();
             try
@@ -243,7 +305,11 @@ public sealed partial class RoadCommands
         };
 
     /// <summary>Civil Display → Triangles: Visible on/off na TCM 3DFACE (TIN ostaje u crtežu).</summary>
-    private static int ApplyTerrainFaceVisibility(Transaction tr, Database db, bool visible)
+    private static int ApplyTerrainFaceVisibility(
+        Transaction tr,
+        Database db,
+        bool visible,
+        string? surfaceName = null)
     {
         var count = 0;
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -257,8 +323,7 @@ public sealed partial class RoadCommands
                 continue;
             }
 
-            if (!TerrainFaceXData.IsTerrainFace(face) &&
-                !string.Equals(face.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase))
+            if (!TerrainSurfaceScope.FaceBelongsTo(face, surfaceName))
             {
                 continue;
             }
@@ -277,7 +342,11 @@ public sealed partial class RoadCommands
     }
 
     /// <summary>Civil Display → Border: Visible on/off na TCM border poliliniji.</summary>
-    private static void ApplyTerrainBorderVisibility(Transaction tr, Database db, bool visible)
+    private static void ApplyTerrainBorderVisibility(
+        Transaction tr,
+        Database db,
+        bool visible,
+        string? surfaceName = null)
     {
         var modelSpace = (BlockTableRecord)tr.GetObject(
             SymbolUtilityServices.GetBlockModelSpaceId(db),
@@ -290,7 +359,7 @@ public sealed partial class RoadCommands
                 continue;
             }
 
-            if (!TerrainBorderXData.IsTerrainBorder(entity))
+            if (!TerrainSurfaceScope.BorderBelongsTo(entity, surfaceName))
             {
                 continue;
             }
@@ -309,11 +378,13 @@ public sealed partial class RoadCommands
         Transaction tr,
         Database db,
         Entity entity,
-        SurfaceComponentStyle comp)
+        SurfaceComponentStyle comp,
+        string? surfaceName = null)
     {
-        var layerName = string.IsNullOrWhiteSpace(comp.Layer) || comp.Layer == "0"
+        var baseLayer = string.IsNullOrWhiteSpace(comp.Layer) || comp.Layer == "0"
             ? ContourMinorLayer
             : comp.Layer.Trim();
+        var layerName = TerrainLayerNames.For(baseLayer, surfaceName);
         EnsureNamedLayer(tr, db, layerName,
             comp.ColorByLayer ? (short)7 : comp.ColorAci,
             comp.LineWeightByBlock ? 0 : comp.LineWeightMm);
@@ -330,7 +401,17 @@ public sealed partial class RoadCommands
         {
             entity.Color = AcColor.FromColorIndex(ColorMethod.ByAci, comp.ColorAci);
         }
-        entity.Linetype = ResolveLinetype(tr, db, comp.Linetype);
+
+        try
+        {
+            entity.Linetype = ResolveLinetype(tr, db, comp.Linetype);
+        }
+        catch
+        {
+            // Linetype null / invalid — ByLayer
+            entity.Linetype = "ByLayer";
+        }
+
         entity.LinetypeScale = comp.LtScale > 0 ? comp.LtScale : 1.0;
         entity.LineWeight = comp.LineWeightByBlock
             ? LineWeight.ByBlock
@@ -418,7 +499,11 @@ public sealed partial class RoadCommands
 
         var ed = doc.Editor;
         var db = doc.Database;
+        ContourPreferences.Load();
 
+        // Spreči Idle handlere (Tin Surface / sync oznaka) da otvaraju transakcije
+        // tokom petlje izbora — to je uzrok eInvalidContext na Dispose.
+        using var guard = TerrainCommandGuard.Suppress();
         try
         {
             var labeled = 0;
@@ -441,48 +526,121 @@ public sealed partial class RoadCommands
                     break;
                 }
 
-                using var tr = db.TransactionManager.StartTransaction();
-                RoadDrawing.EnsureRegApp(tr, db);
-                if (tr.GetObject(per.ObjectId, OpenMode.ForRead) is not Entity entity)
+                Transaction? tr = null;
+                try
                 {
+                    tr = db.TransactionManager.StartTransaction();
+                    RoadDrawing.EnsureRegApp(tr, db);
+                    if (tr.GetObject(per.ObjectId, OpenMode.ForRead) is not Entity entity)
+                    {
+                        tr.Commit();
+                        tr = null;
+                        continue;
+                    }
+
+                    if (!TryGetContourElevation(entity, out var elevation, out var insertAt))
+                    {
+                        ed.WriteMessage("\nTCM-INZINJERING: Objekat nije TCM izohipsa.");
+                        tr.Commit();
+                        tr = null;
+                        continue;
+                    }
+
+                    insertAt = ClosestPointOnContour(entity, per.PickedPoint) ?? insertAt;
+                    if (!ContourLabelGeometry.TryGetDistanceAlong(
+                            entity, insertAt, out var distanceAlong, out var onCurve, out var rotation))
+                    {
+                        onCurve = insertAt;
+                        distanceAlong = 0;
+                        rotation = 0;
+                    }
+
+                    TerrainContourXData.TryGetSurfaceName(entity, out var surfaceName);
+                    if (string.IsNullOrWhiteSpace(surfaceName))
+                    {
+                        surfaceName = NamedTerrainSurfaceStore.GetActiveName(tr, db);
+                    }
+
+                    var parentHandle = entity.Handle.Value;
+                    EnsureContourLayers(tr, db, surfaceName);
+                    var modelSpace = (BlockTableRecord)tr.GetObject(
+                        SymbolUtilityServices.GetBlockModelSpaceId(db),
+                        OpenMode.ForWrite);
+
+                    // Civil-like: prvo Wipeout (maska linije), pa MText IZNAD wipeout-a.
+                    ContourPreferences.Load();
+                    var labelLayer = TerrainLayerNames.For(ContourLabelLayer, surfaceName);
+                    var elevText = ContourLabelGeometry.FormatElevation(elevation);
+                    var textH = ContourPreferences.ContourLabelHeight;
+
+                    ObjectId wipeId = ObjectId.Null;
+                    if (ContourPreferences.ContourLabelBackgroundMask)
+                    {
+                        wipeId = ContourLabelGeometry.CreateLineMaskWipeout(
+                            tr, db, modelSpace, onCurve, rotation, textH, elevText, labelLayer);
+                    }
+
+                    var text = ContourLabelGeometry.CreateLabel(
+                        tr, db, onCurve, rotation, elevation, surfaceName);
+                    modelSpace.AppendEntity(text);
+                    tr.AddNewlyCreatedDBObject(text, true);
+
+                    long wipeHandle = 0;
+                    if (!wipeId.IsNull)
+                    {
+                        var wipe = (Entity)tr.GetObject(wipeId, OpenMode.ForWrite);
+                        TerrainContourXData.AttachContourWipeout(
+                            wipe, text.Handle.Value, elevation, surfaceName);
+                        wipeHandle = wipe.Handle.Value;
+
+                        try
+                        {
+                            var drawOrder = (DrawOrderTable)tr.GetObject(
+                                modelSpace.DrawOrderTableId, OpenMode.ForWrite);
+                            drawOrder.MoveToTop(new ObjectIdCollection { wipeId });
+                            drawOrder.MoveToTop(new ObjectIdCollection { text.ObjectId });
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+                    }
+
+                    TerrainContourXData.AttachContourLabel(
+                        text, elevation, parentHandle, distanceAlong, surfaceName, wipeHandle);
                     tr.Commit();
-                    continue;
+                    tr = null;
+
+                    labeled++;
+                    ed.WriteMessage(
+                        $"\nTCM-INZINJERING: Kotna oznaka {elevText}" +
+                        (string.IsNullOrWhiteSpace(surfaceName) ? "." : $" ({surfaceName})."));
                 }
-
-                if (!TryGetContourElevation(entity, out var elevation, out var insertAt))
+                catch (System.Exception ex)
                 {
-                    ed.WriteMessage("\nTCM-INZINJERING: Objekat nije TCM izohipsa.");
-                    tr.Commit();
-                    continue;
+                    try
+                    {
+                        tr?.Abort();
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
+                    tr = null;
+                    ed.WriteMessage($"\nTCM-INZINJERING greska (kotna oznaka): {ex.Message}");
                 }
-
-                // Opciono: tačka na konturi bliža kliku.
-                insertAt = ClosestPointOnContour(entity, per.PickedPoint) ?? insertAt;
-
-                EnsureContourLayers(tr, db);
-                var modelSpace = (BlockTableRecord)tr.GetObject(
-                    SymbolUtilityServices.GetBlockModelSpaceId(db),
-                    OpenMode.ForWrite);
-
-                var height = Math.Max(0.5, Math.Abs(elevation) * 0.002);
-                if (height < 0.25)
+                finally
                 {
-                    height = 0.5;
+                    try
+                    {
+                        tr?.Dispose();
+                    }
+                    catch
+                    {
+                        // eInvalidContext na Dispose
+                    }
                 }
-
-                var text = new DBText
-                {
-                    Position = new Point3d(insertAt.X, insertAt.Y, elevation),
-                    Height = height,
-                    TextString = elevation.ToString("0.00"),
-                    Layer = ContourLabelLayer
-                };
-                modelSpace.AppendEntity(text);
-                tr.AddNewlyCreatedDBObject(text, true);
-                TerrainContourXData.AttachContourLabel(text, elevation);
-                tr.Commit();
-                labeled++;
-                ed.WriteMessage($"\nTCM-INZINJERING: Kotna oznaka {elevation:0.00}.");
             }
 
             if (labeled > 0)
@@ -548,16 +706,18 @@ public sealed partial class RoadCommands
 
                 using var tr = db.TransactionManager.StartTransaction();
                 RoadDrawing.EnsureRegApp(tr, db);
-                EnsureContourLayers(tr, db);
+                var surfaceName = NamedTerrainSurfaceStore.GetActiveName(tr, db);
+                EnsureContourLayers(tr, db, surfaceName);
                 var modelSpace = (BlockTableRecord)tr.GetObject(
                     SymbolUtilityServices.GetBlockModelSpaceId(db),
                     OpenMode.ForWrite);
 
+                var spotLayer = TerrainLayerNames.For(SpotLayer, surfaceName);
                 var at = new Point3d(pick.Value.X, pick.Value.Y, z);
-                var mark = new DBPoint(at) { Layer = SpotLayer };
+                var mark = new DBPoint(at) { Layer = spotLayer };
                 modelSpace.AppendEntity(mark);
                 tr.AddNewlyCreatedDBObject(mark, true);
-                TerrainContourXData.AttachSpot(mark, z);
+                TerrainContourXData.AttachSpot(mark, z, surfaceName);
 
                 var height = Math.Max(0.4, Math.Abs(z) * 0.002);
                 var text = new DBText
@@ -565,11 +725,11 @@ public sealed partial class RoadCommands
                     Position = new Point3d(at.X + height * 0.3, at.Y + height * 0.3, z),
                     Height = height,
                     TextString = z.ToString("0.00"),
-                    Layer = SpotLayer
+                    Layer = spotLayer
                 };
                 modelSpace.AppendEntity(text);
                 tr.AddNewlyCreatedDBObject(text, true);
-                TerrainContourXData.AttachSpot(text, z);
+                TerrainContourXData.AttachSpot(text, z, surfaceName);
                 tr.Commit();
                 placed++;
                 ed.WriteMessage($"\nTCM-INZINJERING: Spot Z = {z:0.00}.");
@@ -586,7 +746,10 @@ public sealed partial class RoadCommands
         }
     }
 
-    private static List<TerrainTriangle> LoadTerrainTrianglesFromModel(Transaction tr, Database db)
+    private static List<TerrainTriangle> LoadTerrainTrianglesFromModel(
+        Transaction tr,
+        Database db,
+        string? surfaceName = null)
     {
         var triangles = new List<TerrainTriangle>();
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -600,8 +763,7 @@ public sealed partial class RoadCommands
                 continue;
             }
 
-            if (!TerrainFaceXData.IsTerrainFace(face) &&
-                !string.Equals(face.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase))
+            if (!TerrainSurfaceScope.FaceBelongsTo(face, surfaceName))
             {
                 continue;
             }
@@ -620,7 +782,11 @@ public sealed partial class RoadCommands
         return triangles;
     }
 
-    private static int EraseEntitiesWithRole(Transaction tr, Database db, string role)
+    private static int EraseEntitiesWithRole(
+        Transaction tr,
+        Database db,
+        string role,
+        string? surfaceName = null)
     {
         var count = 0;
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -635,6 +801,12 @@ public sealed partial class RoadCommands
             }
 
             if (!TerrainContourXData.TryReadRole(entity, out var r, out _) || r != role)
+            {
+                continue;
+            }
+
+            if (role == TerrainContourXData.RoleContour &&
+                !TerrainSurfaceScope.ContourBelongsTo(entity, surfaceName))
             {
                 continue;
             }
@@ -732,14 +904,14 @@ public sealed partial class RoadCommands
         }
     }
 
-    private static void EnsureContourLayers(Transaction tr, Database db)
+    private static void EnsureContourLayers(Transaction tr, Database db, string? surfaceName = null)
     {
         ContourPreferences.Load();
         var style = ContourPreferences.Current;
         foreach (var key in new[] { "Minor Contour", "Major Contour", "User Contours" })
         {
             var c = style.GetComponent(key);
-            var layer = string.IsNullOrWhiteSpace(c.Layer) || c.Layer == "0"
+            var baseLayer = string.IsNullOrWhiteSpace(c.Layer) || c.Layer == "0"
                 ? key switch
                 {
                     "Major Contour" => ContourMajorLayer,
@@ -747,13 +919,14 @@ public sealed partial class RoadCommands
                     _ => ContourMinorLayer
                 }
                 : c.Layer;
+            var layer = TerrainLayerNames.For(baseLayer, surfaceName);
             EnsureNamedLayer(tr, db, layer,
                 c.ColorByLayer ? (short)7 : c.ColorAci,
                 c.LineWeightByBlock ? 0 : c.LineWeightMm);
         }
 
-        EnsureNamedLayer(tr, db, ContourLabelLayer, 2, 0);
-        EnsureNamedLayer(tr, db, SpotLayer, 4, 0);
+        EnsureNamedLayer(tr, db, TerrainLayerNames.For(ContourLabelLayer, surfaceName), 2, 0);
+        EnsureNamedLayer(tr, db, TerrainLayerNames.For(SpotLayer, surfaceName), 4, 0);
     }
 
     private static void EnsureNamedLayer(

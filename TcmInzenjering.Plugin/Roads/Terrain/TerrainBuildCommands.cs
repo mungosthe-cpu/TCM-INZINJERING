@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -1041,7 +1042,12 @@ public sealed partial class RoadCommands
                         continue;
                     }
 
-                    TerrainDefinitionStore.AddForcedEdge(tr, db, a, b);
+                    if (!TryCommitAddLineSegment(tr, db, a, b))
+                    {
+                        tr.Commit();
+                        continue;
+                    }
+
                     tr.Commit();
                 }
 
@@ -1054,6 +1060,134 @@ public sealed partial class RoadCommands
             if (added > 0)
             {
                 ed.WriteMessage($"\nTCM-INZINJERING: Ukupno Add Line: {added}.");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Civil Add Continuous Line: lanac povezanih TIN ivica — prvo teme, zatim
+    /// sledeća bez prekida (Enter = kraj lanca).
+    /// </summary>
+    [CommandMethod("TCMTERADDCLINE", CommandFlags.Modal)]
+    public void AddTerrainTinContinuousLine()
+    {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
+        var ed = doc.Editor;
+        var db = doc.Database;
+
+        try
+        {
+            var added = 0;
+            while (true)
+            {
+                var startOpts = new PromptPointOptions(
+                    "\nPrvo teme neprekidne TIN linije [Linija] (Enter = kraj): ")
+                {
+                    AllowNone = true
+                };
+                startOpts.Keywords.Add("Linija");
+                var start = ed.GetPoint(startOpts);
+
+                if (start.Status == PromptStatus.Keyword &&
+                    string.Equals(start.StringResult, "Linija", StringComparison.OrdinalIgnoreCase))
+                {
+                    added += AddTerrainLinesFromCurve(ed, db);
+                    continue;
+                }
+
+                if (start.Status != PromptStatus.OK)
+                {
+                    break;
+                }
+
+                Point3d current;
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    var faces = LoadTerrainFaces(tr, db);
+                    if (faces.Count == 0)
+                    {
+                        ed.WriteMessage(
+                            "\nTCM-INZINJERING: Nema 3DFACE terena. Prvo TCMTERFACE.");
+                        tr.Commit();
+                        return;
+                    }
+
+                    if (!TrySnapToTinVertex(start.Value, faces, SwapEdgePickTolerance, out current))
+                    {
+                        ed.WriteMessage(
+                            "\nTCM-INZINJERING: Kliknite blizu postojeceg TIN temena.");
+                        tr.Commit();
+                        continue;
+                    }
+
+                    tr.Commit();
+                }
+
+                var chainSegments = 0;
+                while (true)
+                {
+                    var nextOpts = new PromptPointOptions(
+                        "\nSledece teme neprekidne linije (Enter = kraj lanca): ")
+                    {
+                        AllowNone = true,
+                        UseBasePoint = true,
+                        BasePoint = current
+                    };
+                    var nextPick = ed.GetPoint(nextOpts);
+                    if (nextPick.Status != PromptStatus.OK)
+                    {
+                        break;
+                    }
+
+                    using (var tr = db.TransactionManager.StartTransaction())
+                    {
+                        var faces = LoadTerrainFaces(tr, db);
+                        if (!TrySnapToTinVertex(nextPick.Value, faces, SwapEdgePickTolerance, out var next))
+                        {
+                            ed.WriteMessage(
+                                "\nTCM-INZINJERING: Kliknite blizu postojeceg TIN temena.");
+                            tr.Commit();
+                            continue;
+                        }
+
+                        if (XyDistance(current, next) < 1e-6)
+                        {
+                            ed.WriteMessage("\nTCM-INZINJERING: Temena moraju biti razlicita.");
+                            tr.Commit();
+                            continue;
+                        }
+
+                        TerrainDefinitionStore.AddForcedEdge(tr, db, current, next);
+                        tr.Commit();
+                        current = next;
+                    }
+
+                    RebuildTerrainFaces(ed, db, announce: false);
+                    chainSegments++;
+                    added++;
+                    ed.WriteMessage(
+                        "\nTCM-INZINJERING: Add Continuous Line — segment forsiran, TIN osvezen.");
+                }
+
+                if (chainSegments > 0)
+                {
+                    ed.WriteMessage(
+                        $"\nTCM-INZINJERING: Lanac zavrsen ({chainSegments} segment(a)).");
+                }
+            }
+
+            if (added > 0)
+            {
+                ed.WriteMessage($"\nTCM-INZINJERING: Ukupno Add Continuous Line: {added}.");
             }
         }
         catch (System.Exception ex)
@@ -1104,6 +1238,7 @@ public sealed partial class RoadCommands
         }
 
         var segments = 0;
+        List<(Point3d A, Point3d B)> candidateEdges;
         using (var tr = db.TransactionManager.StartTransaction())
         {
             RoadDrawing.EnsureRegApp(tr, db);
@@ -1125,8 +1260,7 @@ public sealed partial class RoadCommands
                 snapped.Add(raw);
             }
 
-            TerrainPointStore.Save(tr, db, points);
-
+            candidateEdges = new List<(Point3d A, Point3d B)>();
             for (var i = 0; i + 1 < snapped.Count; i++)
             {
                 if (XyDistance(snapped[i], snapped[i + 1]) < 1e-6)
@@ -1134,7 +1268,27 @@ public sealed partial class RoadCommands
                     continue;
                 }
 
-                TerrainDefinitionStore.AddForcedEdge(tr, db, snapped[i], snapped[i + 1]);
+                candidateEdges.Add((snapped[i], snapped[i + 1]));
+            }
+
+            if (candidateEdges.Count == 0)
+            {
+                tr.Commit();
+                ed.WriteMessage("\nTCM-INZINJERING: Nema segmenata za Add Line.");
+                return 0;
+            }
+
+            if (!TerrainTinConstraints.TryValidateForcedEdges(tr, db, points, candidateEdges, out var failure))
+            {
+                tr.Commit();
+                ShowAddLineBlockedMessage(failure);
+                return 0;
+            }
+
+            TerrainPointStore.Save(tr, db, points);
+            foreach (var edge in candidateEdges)
+            {
+                TerrainDefinitionStore.AddForcedEdge(tr, db, edge.A, edge.B);
                 segments++;
             }
 
@@ -1151,6 +1305,28 @@ public sealed partial class RoadCommands
         ed.WriteMessage(
             $"\nTCM-INZINJERING: Add Line duz linije — {segments} forsiran(ih) ivica, TIN osvezen.");
         return segments;
+    }
+
+    private static bool TryCommitAddLineSegment(Transaction tr, Database db, Point3d a, Point3d b)
+    {
+        var points = TerrainPointStore.Load(tr, db).ToList();
+        if (!TerrainTinConstraints.TryValidateForcedEdge(tr, db, points, a, b, out var failure))
+        {
+            ShowAddLineBlockedMessage(failure);
+            return false;
+        }
+
+        TerrainDefinitionStore.AddForcedEdge(tr, db, a, b);
+        return true;
+    }
+
+    private static void ShowAddLineBlockedMessage(string? message)
+    {
+        MessageBox.Show(
+            message ?? "Add Line nije moguce.",
+            "TCM-INŽINJERING — Add Line",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
     }
 
     private static List<Point3d> SampleCurveVertices(Transaction tr, Curve curve)
@@ -1307,6 +1483,10 @@ public sealed partial class RoadCommands
                 tr.Commit();
                 swapped++;
                 ed.WriteMessage("\nTCM-INZINJERING: Ivica zamenjena (sacuvano za TCMTERFACE).");
+                if (RefreshContoursIfDrawn(writeMessage: false))
+                {
+                    ed.WriteMessage(" Izohipse osvezene.");
+                }
             }
 
             if (swapped > 0)
@@ -1414,6 +1594,10 @@ public sealed partial class RoadCommands
             {
                 ed.WriteMessage(
                     $"\nTCM-INZINJERING: Ukupno obrisano 3DFACE: {deletedFaces}.");
+                if (RefreshContoursIfDrawn(writeMessage: false))
+                {
+                    ed.WriteMessage(" Izohipse osvezene.");
+                }
             }
         }
         catch (System.Exception ex)
@@ -1454,7 +1638,7 @@ public sealed partial class RoadCommands
             }
 
             if (!TerrainFaceXData.IsTerrainFace(face) &&
-                !string.Equals(face.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase))
+                !TerrainLayerNames.IsBaseOrPrefixed(face.Layer, TerrainLayerName))
             {
                 continue;
             }
@@ -1501,6 +1685,10 @@ public sealed partial class RoadCommands
             resolvedName = NamedTerrainSurfaceStore.NormalizeName(surfaceName);
             NamedTerrainSurfaceStore.SaveSurface(writeTr, db, resolvedName, points);
         }
+        else
+        {
+            resolvedName = NamedTerrainSurfaceStore.GetActiveName(writeTr, db);
+        }
 
         var built = TerrainTinConstraints.Build(writeTr, db, points);
         if (built.Triangles.Count == 0)
@@ -1512,14 +1700,16 @@ public sealed partial class RoadCommands
         }
 
         RoadDrawing.EnsureRegApp(writeTr, db);
-        EnsureTerrainLayer(writeTr, db);
+        var faceLayer = TerrainLayerNames.For(TerrainLayerName, resolvedName);
+        var borderLayerBase = TerrainLayerNames.For(TerrainBorderLayerName, resolvedName);
+        EnsureNamedLayer(writeTr, db, faceLayer, 4);
         ContourPreferences.Load();
         var borderComp = ContourPreferences.Current.GetComponent("Border");
-        EnsureNamedLayer(writeTr, db, TerrainBorderLayerName,
+        EnsureNamedLayer(writeTr, db, borderLayerBase,
             borderComp.ColorByLayer ? (short)2 : borderComp.ColorAci);
 
-        var erased = EraseTerrainFaces(writeTr, db);
-        var erasedBorders = EraseTerrainBorders(writeTr, db);
+        var erased = EraseTerrainFaces(writeTr, db, resolvedName);
+        var erasedBorders = EraseTerrainBorders(writeTr, db, resolvedName);
 
         var modelSpace = (BlockTableRecord)writeTr.GetObject(
             SymbolUtilityServices.GetBlockModelSpaceId(db),
@@ -1557,7 +1747,7 @@ public sealed partial class RoadCommands
             ed.WriteMessage(
                 $"\nTCM-INZINJERING: Kreiran 3D teren" +
                 (resolvedName is not null ? $" „{resolvedName}“" : string.Empty) +
-                $" — {created} × 3DFACE na layeru {TerrainLayerName} " +
+                $" — {created} × 3DFACE na layeru {TerrainLayerNames.For(TerrainLayerName, resolvedName)} " +
                 $"(od {built.Vertices.Count} tacaka" +
                 (borderDrawn > 0 ? $", border {borderDrawn} ivica" : string.Empty) +
                 (built.BreaklineSegments > 0 ? $", breakline seg. {built.BreaklineSegments}" : string.Empty) +
@@ -1567,6 +1757,11 @@ public sealed partial class RoadCommands
                 (erased > 0 ? $", obrisano starih {erased}" : string.Empty) +
                 (erasedBorders > 0 ? $", stari border {erasedBorders}" : string.Empty) +
                 ").");
+        }
+
+        if (RefreshContoursIfDrawn(writeMessage: false))
+        {
+            ed.WriteMessage("\nTCM-INZINJERING: Izohipse osvezene (TIN promenjen).");
         }
     }
 
@@ -1594,8 +1789,8 @@ public sealed partial class RoadCommands
         }
 
         var layer = string.IsNullOrWhiteSpace(borderComp.Layer) || borderComp.Layer == "0"
-            ? TerrainBorderLayerName
-            : borderComp.Layer.Trim();
+            ? TerrainLayerNames.For(TerrainBorderLayerName, surfaceName)
+            : TerrainLayerNames.For(borderComp.Layer.Trim(), surfaceName);
         EnsureNamedLayer(tr, modelSpace.Database, layer,
             borderComp.ColorByLayer ? (short)2 : borderComp.ColorAci);
         pl.Layer = layer;
@@ -1619,7 +1814,7 @@ public sealed partial class RoadCommands
         return ring.Count;
     }
 
-    private static int EraseTerrainBorders(Transaction tr, Database db)
+    private static int EraseTerrainBorders(Transaction tr, Database db, string? surfaceName = null)
     {
         var count = 0;
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -1633,14 +1828,13 @@ public sealed partial class RoadCommands
                 continue;
             }
 
-            if (!TerrainBorderXData.IsTerrainBorder(entity) &&
-                !string.Equals(entity.Layer, TerrainBorderLayerName, StringComparison.OrdinalIgnoreCase))
+            // Samo TCM border sa XData — ne briši korisničku granicu (TCMTERBOUND) bez XData.
+            if (!TerrainBorderXData.IsTerrainBorder(entity))
             {
                 continue;
             }
 
-            // Samo TCM border — ne brisi korisnicku granicu (TCMTERBOUND) bez XData.
-            if (!TerrainBorderXData.IsTerrainBorder(entity))
+            if (!TerrainSurfaceScope.BorderBelongsTo(entity, surfaceName))
             {
                 continue;
             }
@@ -1683,17 +1877,17 @@ public sealed partial class RoadCommands
     {
         var face = new Face(a, b, c, c, true, true, true, true)
         {
-            Layer = TerrainLayerName
+            Layer = TerrainLayerNames.For(TerrainLayerName, surfaceName)
         };
         modelSpace.AppendEntity(face);
         tr.AddNewlyCreatedDBObject(face, true);
         TerrainFaceXData.Attach(face, surfaceName);
     }
 
-    private static int EraseTerrainFaces(Transaction tr, Database db)
+    private static int EraseTerrainFaces(Transaction tr, Database db, string? surfaceName = null)
     {
         var count = 0;
-        foreach (var face in LoadTerrainFaces(tr, db))
+        foreach (var face in LoadTerrainFaces(tr, db, surfaceName))
         {
             face.UpgradeOpen();
             face.Erase();
@@ -1706,7 +1900,7 @@ public sealed partial class RoadCommands
     private static int CountTerrainFaces(Transaction tr, Database db) =>
         LoadTerrainFaces(tr, db).Count;
 
-    private static List<Face> LoadTerrainFaces(Transaction tr, Database db)
+    private static List<Face> LoadTerrainFaces(Transaction tr, Database db, string? surfaceName = null)
     {
         var result = new List<Face>();
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -1720,12 +1914,12 @@ public sealed partial class RoadCommands
                 continue;
             }
 
-            // Tagovana TCM lica; fallback: sva Face na TCM_TEREN (stariji crtezi).
-            if (TerrainFaceXData.IsTerrainFace(face) ||
-                string.Equals(face.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase))
+            if (!TerrainSurfaceScope.FaceBelongsTo(face, surfaceName))
             {
-                result.Add(face);
+                continue;
             }
+
+            result.Add(face);
         }
 
         return result;

@@ -23,7 +23,8 @@ internal static class TerrainTinConstraints
     public static BuildResult Build(
         Transaction tr,
         Database db,
-        IReadOnlyList<Point3d> seedPoints)
+        IReadOnlyList<Point3d> seedPoints,
+        IReadOnlyList<(Point3d A, Point3d B)>? extraForcedEdges = null)
     {
         var verts = Deduplicate(seedPoints);
         var breakSegs = new List<(Point3d A, Point3d B)>();
@@ -109,6 +110,20 @@ internal static class TerrainTinConstraints
             }
         }
 
+        if (extraForcedEdges is not null)
+        {
+            foreach (var edge in extraForcedEdges)
+            {
+                if (TryGetIndex(index, edge.A, out var i) &&
+                    TryGetIndex(index, edge.B, out var j) &&
+                    i != j &&
+                    EnforceEdge(tris, verts, i, j))
+                {
+                    forcedApplied++;
+                }
+            }
+        }
+
         var beforeDelete = tris.Count;
         foreach (var edge in TerrainDefinitionStore.LoadDeletedEdges(tr, db))
         {
@@ -150,6 +165,181 @@ internal static class TerrainTinConstraints
             BoundaryCulled = beforeClip - tris.Count
         };
     }
+
+    /// <summary>
+    /// Proba da li se ivica može uključiti u TIN bez preklapanja/sečenja trouglova (Add Line).
+    /// </summary>
+    public static bool TryValidateForcedEdge(
+        Transaction tr,
+        Database db,
+        IReadOnlyList<Point3d> seedPoints,
+        Point3d a,
+        Point3d b,
+        out string? failureReason)
+    {
+        failureReason = null;
+        if (XyDist(a, b) <= Tol)
+        {
+            failureReason = "Temena moraju biti razlicita.";
+            return false;
+        }
+
+        var baseline = Build(tr, db, seedPoints);
+        if (baseline.Triangles.Count == 0)
+        {
+            failureReason = "TIN mreza nije dostupna. Prvo pokrenite TCMTERFACE.";
+            return false;
+        }
+
+        var index = BuildIndex(baseline.Vertices);
+        if (!TryGetIndex(index, a, out var ia) || !TryGetIndex(index, b, out var ib))
+        {
+            failureReason = "Temena moraju biti postojeca TIN temena.";
+            return false;
+        }
+
+        if (ia == ib)
+        {
+            failureReason = "Temena moraju biti razlicita.";
+            return false;
+        }
+
+        if (baseline.Triangles.Any(t => TriangleHasEdge(t, ia, ib)))
+        {
+            return IsValidTriangulation(baseline.Triangles, baseline.Vertices);
+        }
+
+        var trial = Build(tr, db, seedPoints, extraForcedEdges: new[] { (a, b) });
+        if (trial.Triangles.Count == 0)
+        {
+            failureReason =
+                "Add Line nije moguce: triangulacija ne moze da se izgradi sa novom ivicom.";
+            return false;
+        }
+
+        index = BuildIndex(trial.Vertices);
+        if (!TryGetIndex(index, a, out ia) || !TryGetIndex(index, b, out ib))
+        {
+            failureReason = "Temena moraju biti postojeca TIN temena.";
+            return false;
+        }
+
+        if (!trial.Triangles.Any(t => TriangleHasEdge(t, ia, ib)))
+        {
+            failureReason =
+                "Add Line nije moguce: nova TIN ivica ne moze da se ukljuci u mrezu bez preklapanja ili secenja 3DFACE trouglova.\n\n" +
+                "Izaberite druga dva temena ili prvo izmenite okolne ivice (Swap / Delete).";
+            return false;
+        }
+
+        if (!IsValidTriangulation(trial.Triangles, trial.Vertices))
+        {
+            failureReason =
+                "Add Line nije moguce: rezultujuci 3DFACE trouglovi bi se secili ili preklapali.\n\n" +
+                "Izaberite druga dva temena ili prvo izmenite okolne ivice (Swap / Delete).";
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Validacija više segmenata (Add Line duž linije).
+    /// </summary>
+    public static bool TryValidateForcedEdges(
+        Transaction tr,
+        Database db,
+        IReadOnlyList<Point3d> seedPoints,
+        IReadOnlyList<(Point3d A, Point3d B)> edges,
+        out string? failureReason)
+    {
+        failureReason = null;
+        var unique = edges
+            .Where(e => XyDist(e.A, e.B) > Tol)
+            .ToList();
+        if (unique.Count == 0)
+        {
+            failureReason = "Nema segmenata za Add Line.";
+            return false;
+        }
+
+        var trial = Build(tr, db, seedPoints, extraForcedEdges: unique);
+        if (trial.Triangles.Count == 0)
+        {
+            failureReason =
+                "Add Line nije moguce: triangulacija ne moze da se izgradi sa novim ivicama.";
+            return false;
+        }
+
+        if (!IsValidTriangulation(trial.Triangles, trial.Vertices))
+        {
+            failureReason =
+                "Add Line nije moguce: rezultujuci 3DFACE trouglovi bi se secili ili preklapali.\n\n" +
+                "Proverite putanju linije i okolne TIN ivice.";
+            return false;
+        }
+
+        var index = BuildIndex(trial.Vertices);
+        foreach (var edge in unique)
+        {
+            if (!TryGetIndex(index, edge.A, out var ia) ||
+                !TryGetIndex(index, edge.B, out var ib) ||
+                !trial.Triangles.Any(t => TriangleHasEdge(t, ia, ib)))
+            {
+                failureReason =
+                    "Add Line nije moguce: jedna ili vise novih ivica ne moze da se ukljuci u TIN mrezu bez preklapanja trouglova.\n\n" +
+                    "Proverite putanju linije i okolne TIN ivice.";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsValidTriangulation(
+        IReadOnlyList<TerrainDelaunay.Triangle> tris,
+        IReadOnlyList<Point3d> verts)
+    {
+        foreach (var tri in tris)
+        {
+            if (Area2(verts[tri.A], verts[tri.B], verts[tri.C]) <= 1e-12)
+            {
+                return false;
+            }
+        }
+
+        var edges = new List<(int I, int J)>(tris.Count * 3);
+        foreach (var tri in tris)
+        {
+            edges.Add(NormalizeEdge(tri.A, tri.B));
+            edges.Add(NormalizeEdge(tri.B, tri.C));
+            edges.Add(NormalizeEdge(tri.C, tri.A));
+        }
+
+        for (var i = 0; i < edges.Count; i++)
+        {
+            var (a1, b1) = edges[i];
+            var p1 = verts[a1];
+            var p2 = verts[b1];
+            for (var j = i + 1; j < edges.Count; j++)
+            {
+                var (a2, b2) = edges[j];
+                if (a1 == a2 || a1 == b2 || b1 == a2 || b1 == b2)
+                {
+                    continue;
+                }
+
+                if (SegmentsProperIntersect(p1, p2, verts[a2], verts[b2]))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static (int I, int J) NormalizeEdge(int a, int b) => a < b ? (a, b) : (b, a);
 
     private static bool EnforceEdge(List<TerrainDelaunay.Triangle> tris, List<Point3d> verts, int i, int j)
     {

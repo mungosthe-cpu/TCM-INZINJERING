@@ -13,4 +13,13 @@ internal sealed class AlignmentElement
     public double Radius { get; init; }
     public Point3d Center { get; init; }
     public bool Clockwise { get; init; }
+
+    /// <summary>Klotoida: uzorci duž luka (XY). Null za Tangent/Arc.</summary>
+    public IReadOnlyList<Point3d>? SpiralPoints { get; init; }
+
+    /// <summary>Dužina prelaznice L (isto kao Length za Spiral).</summary>
+    public double SpiralLength => Type == AlignmentElementType.Spiral ? Length : 0;
+
+    /// <summary>A = √(R·L) za prelaznicu.</summary>
+    public double SpiralA { get; init; }
 }

@@ -65,6 +65,7 @@ internal static class AxisGeometryReader
         {
             Line line => ReadLine(line),
             Arc arc => ArcOrientation.ReadArc(arc),
+            Polyline pl => ReadSpiral(pl),
             _ => null
         };
     }
@@ -80,6 +81,59 @@ internal static class AxisGeometryReader
             Radius = 0,
             Center = Point3d.Origin,
             Clockwise = false
+        };
+    }
+
+    private static AlignmentElement ReadSpiral(Polyline pl)
+    {
+        var pts = new List<Point3d>(pl.NumberOfVertices);
+        for (var i = 0; i < pl.NumberOfVertices; i++)
+        {
+            pts.Add(pl.GetPoint3dAt(i));
+        }
+
+        var length = 0.0;
+        for (var i = 1; i < pts.Count; i++)
+        {
+            length += pts[i - 1].DistanceTo(pts[i]);
+        }
+
+        // Radius / A iz XData ako postoji.
+        double radius = 0;
+        double spiralA = 0;
+        var xd = pl.GetXDataForApplication(RoadDrawing.RegAppName);
+        if (xd is not null)
+        {
+            var items = xd.AsArray();
+            if (items.Length >= 8)
+            {
+                radius = Convert.ToDouble(items[7].Value);
+            }
+
+            if (items.Length >= 9)
+            {
+                spiralA = Convert.ToDouble(items[8].Value);
+            }
+
+            if (items.Length >= 10)
+            {
+                length = Convert.ToDouble(items[9].Value);
+            }
+        }
+
+        return new AlignmentElement
+        {
+            Type = AlignmentElementType.Spiral,
+            Start = pts.Count > 0 ? pts[0] : Point3d.Origin,
+            End = pts.Count > 0 ? pts[^1] : Point3d.Origin,
+            Length = Math.Max(length, 1e-6),
+            Radius = radius,
+            Center = Point3d.Origin,
+            Clockwise = false,
+            SpiralPoints = pts,
+            SpiralA = spiralA > 1e-9
+                ? spiralA
+                : Math.Sqrt(Math.Max(1e-12, radius * length))
         };
     }
 

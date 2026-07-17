@@ -76,6 +76,11 @@ internal static class ContourPreferences
     public static string MinorLinetype => Current.GetComponent("Minor Contour").Linetype;
     public static string MajorLinetype => Current.GetComponent("Major Contour").Linetype;
     public static IReadOnlyList<double> UserContourElevations => Current.ParseUserContours();
+    public static string ContourLabelFont => Current.ContourLabelFont;
+    public static double ContourLabelHeight => Math.Max(0.1, Current.ContourLabelHeight);
+    public static int ContourLabelDecimals => MathNet48.Clamp(Current.ContourLabelDecimals, 0, 6);
+    public static short ContourLabelColorAci => Current.ContourLabelColorAci;
+    public static bool ContourLabelBackgroundMask => Current.ContourLabelBackgroundMask;
 
     public static void Load()
     {
@@ -195,6 +200,13 @@ internal sealed class SurfaceStyleSnapshot
     public string MinorDisplayLinetype { get; set; } = "Continuous";
     public string UserContoursText { get; set; } = "";
 
+    // Kotne oznake (izohipse)
+    public string ContourLabelFont { get; set; } = "arial.ttf";
+    public double ContourLabelHeight { get; set; } = 1.0;
+    public int ContourLabelDecimals { get; set; } = 2;
+    public short ContourLabelColorAci { get; set; } = 1;
+    public bool ContourLabelBackgroundMask { get; set; } = true;
+
     // Grid
     public SurfaceElevationDisplayMode GridDisplayMode { get; set; } =
         SurfaceElevationDisplayMode.UseSurfaceElevation;
@@ -307,6 +319,12 @@ internal sealed class SurfaceStyleSnapshot
         SecondaryGridInterval = Math.Max(1e-6, SecondaryGridInterval);
         PointUnits = Math.Max(1e-6, PointUnits);
         DepressionTickLength = Math.Max(0, DepressionTickLength);
+        ContourLabelHeight = Math.Max(0.1, ContourLabelHeight);
+        ContourLabelDecimals = MathNet48.Clamp(ContourLabelDecimals, 0, 6);
+        ContourLabelFont = string.IsNullOrWhiteSpace(ContourLabelFont)
+            ? "arial.ttf"
+            : StationFontCatalog.ResolveFileName(ContourLabelFont);
+
         ExaggerateBordersScale = Math.Max(0, ExaggerateBordersScale);
         ExaggerateContoursScale = Math.Max(0, ExaggerateContoursScale);
         ExaggerateGridScale = Math.Max(0, ExaggerateGridScale);

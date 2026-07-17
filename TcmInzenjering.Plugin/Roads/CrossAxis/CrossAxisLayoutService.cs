@@ -82,24 +82,34 @@ internal static class CrossAxisLayoutService
                 continue;
             }
 
-            var stationIndex = number - options.AxisCounterStart;
-            if (stationIndex < 0 || stationIndex >= stations.Count)
+            double station;
+            var meta = CrossAxisMetaStore.Load(tr, db, handle);
+            if (meta is not null)
             {
-                // Ako broj ne odgovara, obriši "tick-like" poprečnu osu ostavljenu na staroj lokaciji.
-                if (IsTickLikeCrossAxis(axisEntity, options.TickLength))
+                station = meta.Station;
+            }
+            else
+            {
+                var stationIndex = number - options.AxisCounterStart;
+                if (stationIndex < 0 || stationIndex >= stations.Count)
                 {
-                    if (!axisEntity.IsWriteEnabled)
+                    // Ako broj ne odgovara, obriši "tick-like" poprečnu osu ostavljenu na staroj lokaciji.
+                    if (IsTickLikeCrossAxis(axisEntity, options.TickLength))
                     {
-                        axisEntity.UpgradeOpen();
+                        if (!axisEntity.IsWriteEnabled)
+                        {
+                            axisEntity.UpgradeOpen();
+                        }
+
+                        axisEntity.Erase();
                     }
 
-                    axisEntity.Erase();
+                    continue;
                 }
 
-                continue;
+                station = stations[stationIndex];
             }
 
-            var station = stations[stationIndex];
             var point = roadAxis.GetPointAtStation(station);
             var direction = roadAxis.SampleDirectionAtStation(station);
             if (point is null || direction is null)
@@ -108,8 +118,12 @@ internal static class CrossAxisLayoutService
             }
 
             StationFontPreferences.Load();
-            var leftLength = StationFontPreferences.CrossAxisLeftLength;
-            var rightLength = StationFontPreferences.CrossAxisRightLength;
+            var leftLength = meta?.LeftWidth > 1e-6
+                ? meta.LeftWidth
+                : StationFontPreferences.CrossAxisLeftLength;
+            var rightLength = meta?.RightWidth > 1e-6
+                ? meta.RightWidth
+                : StationFontPreferences.CrossAxisRightLength;
 
             var across = new Vector3d(-direction.Value.Y, direction.Value.X, 0);
             if (across.Length < 1e-9)
@@ -302,15 +316,22 @@ internal static class CrossAxisLayoutService
             {
                 if (stationValue is null && isCrossAxis)
                 {
-                    var metadata = RoadAxisStore.Load(tr, db, axisName);
-                    if (metadata is not null)
+                    if (CrossAxisMetaStore.TryGetStation(tr, db, entity.Handle.Value, out var storedStation))
                     {
-                        var options = metadata.ToLabelOptions();
-                        var stations = RoadDrawing.CollectStationsForSync(roadAxis, options);
-                        var stationIndex = number - options.AxisCounterStart;
-                        if (stationIndex >= 0 && stationIndex < stations.Count)
+                        stationValue = storedStation;
+                    }
+                    else
+                    {
+                        var metadata = RoadAxisStore.Load(tr, db, axisName);
+                        if (metadata is not null)
                         {
-                            stationValue = stations[stationIndex];
+                            var options = metadata.ToLabelOptions();
+                            var stations = RoadDrawing.CollectStationsForSync(roadAxis, options);
+                            var stationIndex = number - options.AxisCounterStart;
+                            if (stationIndex >= 0 && stationIndex < stations.Count)
+                            {
+                                stationValue = stations[stationIndex];
+                            }
                         }
                     }
                 }
@@ -632,7 +653,12 @@ internal static class CrossAxisLayoutService
             AxisPolylineResolver.TryResolve(db, metadata.SourcePolylineHandle, out var polylineId))
         {
             var polyline = (Polyline)tr.GetObject(polylineId, OpenMode.ForRead);
-            axis = PolylineToTangentConverter.Convert(polyline, metadata.CurveRadius, 0, roadAxisName);
+            axis = PolylineToTangentConverter.Convert(
+                polyline,
+                metadata.CurveRadius,
+                0,
+                roadAxisName,
+                CornerRadiusStore.Load(tr, db, roadAxisName));
             axis = RoadAxisTrimmer.Trim(axis, metadata.StartStation, metadata.EndStation);
         }
         else
@@ -1108,7 +1134,12 @@ internal static class CrossAxisLayoutService
             AxisPolylineResolver.TryResolve(db, metadata.SourcePolylineHandle, out var polylineId))
         {
             var polyline = (Polyline)tr.GetObject(polylineId, OpenMode.ForRead);
-            axis = PolylineToTangentConverter.Convert(polyline, metadata.CurveRadius, 0, roadAxisName);
+            axis = PolylineToTangentConverter.Convert(
+                polyline,
+                metadata.CurveRadius,
+                0,
+                roadAxisName,
+                CornerRadiusStore.Load(tr, db, roadAxisName));
             axis = RoadAxisTrimmer.Trim(axis, metadata.StartStation, metadata.EndStation);
         }
         else

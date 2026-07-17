@@ -198,7 +198,7 @@ internal static class ProfileDrawing
         }
 
         // Poprečne (vertikalne u grafiku) — TCM_POP_MREZA
-        foreach (var s in view.CollectTabulationStations())
+        foreach (var s in view.CollectTabulationStations(tr, ms.Database))
         {
             var x = view.StationToX(s);
             AppendVLine(tr, ms, view, x, yGraphBot, yGraphTop, LayerCrossGrid);
@@ -218,12 +218,16 @@ internal static class ProfileDrawing
             return;
         }
 
-        var stations = view.CollectTabulationStations();
+        var stations = view.CollectSituationStations(tr, ms.Database);
         var stepHint = stations.Count >= 2
-            ? Math.Max(stations[1] - stations[0], 1e-6)
+            ? Math.Max(stations[1].Station - stations[0].Station, 1e-6)
             : Math.Max(view.StationTickInterval, 1e-6);
         var textH = Math.Max(0.6, Math.Min(2.2, stepHint * view.StationFactor * 0.35));
         var bands = view.ResolveBands();
+
+        var metadata = RoadAxisStore.Load(tr, ms.Database, view.AxisName);
+        var prefix = metadata?.Prefix ?? "STA ";
+        var counterStart = metadata?.AxisCounterStart ?? 1;
 
         List<(double Station, double Elevation)> gradeSamples = [];
         ProfileGradeSampler.TryLoadSamples(tr, ms.Database, view.AxisName, out gradeSamples);
@@ -234,8 +238,11 @@ internal static class ProfileDrawing
         var yTableTop = view.GraphBottomY;
 
         double? prevStation = null;
-        foreach (var s in stations)
+        var prevWasSituationTick = false;
+        for (var stationIndex = 0; stationIndex < stations.Count; stationIndex++)
         {
+            var entry = stations[stationIndex];
+            var s = entry.Station;
             var x = view.StationToX(s);
             if (view.DrawVerticals)
             {
@@ -251,6 +258,17 @@ internal static class ProfileDrawing
             var z = InterpolateElevation(samples, s);
             var zGrade = InterpolateElevation(gradeSamples, s);
 
+            // STA N sa situacije (master).
+            string? profileMark = null;
+            if (entry.IsSituationTick && entry.Number > 0)
+            {
+                profileMark = RoadDrawing.FormatStaAttribute(prefix, entry.Number);
+            }
+            else if (entry.IsSituationTick)
+            {
+                profileMark = RoadDrawing.FormatStaAttribute(prefix, counterStart + stationIndex);
+            }
+
             for (var i = 0; i < bands.Count; i++)
             {
                 var band = bands[i];
@@ -258,12 +276,21 @@ internal static class ProfileDrawing
                 switch (band.Kind)
                 {
                     case ProfileBandKind.ProfileMarks:
-                        if (prevStation is not null)
+                        if (profileMark is not null)
+                        {
+                            AppendRotatedText(tr, ms, view,
+                                new Point3d(x, cy, 0),
+                                profileMark, textH * 0.85, LayerText, band.TextAci);
+                        }
+
+                        // Rastojanje samo između poprečnih osa sa situacije.
+                        if (prevWasSituationTick && entry.IsSituationTick &&
+                            prevStation is not null && gap > 1e-6)
                         {
                             var midX = view.StationToX((prevStation.Value + s) * 0.5);
-                            AppendRotatedText(tr, ms, view,
+                            AppendCenteredLabel(tr, ms, view,
                                 new Point3d(midX, cy, 0),
-                                gap.ToString("0.000"), textH * 0.85, LayerText, band.TextAci);
+                                gap.ToString("0.000"), textH * 0.75, LayerText, band.TextAci);
                         }
 
                         break;
@@ -300,7 +327,11 @@ internal static class ProfileDrawing
                 }
             }
 
-            prevStation = s;
+            if (entry.IsSituationTick)
+            {
+                prevStation = s;
+                prevWasSituationTick = true;
+            }
         }
     }
 

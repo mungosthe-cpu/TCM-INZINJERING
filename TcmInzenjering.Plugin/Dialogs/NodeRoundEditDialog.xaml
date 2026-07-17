@@ -1,0 +1,127 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.NodeRoundEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="UredjenjeKrivine"
+        SizeToContent="Height"
+        MinHeight="680"
+        Width="440"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Šema krivine (Plateia) -->
+    <Border Grid.Row="0" BorderBrush="#666" BorderThickness="1" Background="White" Height="168" Margin="0,0,0,10">
+      <Image x:Name="SchemaImage" Stretch="Uniform" Margin="4"/>
+    </Border>
+
+    <GroupBox Grid.Row="1" Header="Tip" Padding="8,6,8,8" Margin="0,0,0,8">
+      <DockPanel LastChildFill="False">
+        <RadioButton x:Name="AutoRadio" Content="Auto" IsChecked="True" Margin="0,0,12,0"
+                     VerticalAlignment="Center" Checked="OnTipChanged"/>
+        <RadioButton x:Name="ManualRadio" Content="Ručno:" Margin="0,0,6,0"
+                     VerticalAlignment="Center" Checked="OnTipChanged"/>
+        <ComboBox x:Name="ManualModeBox" Width="72" Height="24" Margin="0,0,8,0"
+                  SelectionChanged="OnManualModeChanged">
+          <ComboBoxItem Content="LRL" IsSelected="True"/>
+          <ComboBoxItem Content="LR"/>
+          <ComboBoxItem Content="RL"/>
+          <ComboBoxItem Content="LL"/>
+        </ComboBox>
+        <Button Content="A" Width="28" Height="24" Margin="0,0,6,0" IsEnabled="False"
+                ToolTip="Parametar A (prelaznica) — uskoro"/>
+        <Button x:Name="RefreshBtn" Content="Osveži" Width="70" Height="24" Click="OnRefreshClick"
+                HorizontalAlignment="Right" DockPanel.Dock="Right"/>
+      </DockPanel>
+    </GroupBox>
+
+    <GroupBox Grid.Row="2" Header="Parametri krivine" Padding="8,6,8,8" Margin="0,0,0,8">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="78"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="28"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <CheckBox x:Name="R1Lock" Grid.Row="0" Grid.Column="0" Content="R1=" Margin="0,4"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBox x:Name="R1Box" Grid.Row="0" Grid.Column="1" Height="22" Margin="4,2"
+                 VerticalContentAlignment="Center" Text="0.0"/>
+
+        <CheckBox x:Name="L1Lock" Grid.Row="1" Grid.Column="0" Content="L1=" Margin="0,4"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBox x:Name="L1Box" Grid.Row="1" Grid.Column="1" Height="22" Margin="4,2"
+                 VerticalContentAlignment="Center" Text="0.0" TextChanged="OnParamChanged"/>
+
+        <CheckBox x:Name="RLock" Grid.Row="2" Grid.Column="0" Content="R=" Margin="0,4"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBox x:Name="RBox" Grid.Row="2" Grid.Column="1" Height="22" Margin="4,2"
+                 VerticalContentAlignment="Center" TextChanged="OnParamChanged"/>
+        <Button Grid.Row="2" Grid.Column="2" Width="24" Height="22" Click="OnPickR"
+                ToolTip="Iz crteza: kliknite da odredite R, zatim se vracate ovde"
+                FontWeight="Bold" Foreground="#C00000" Content="✕"/>
+
+        <CheckBox x:Name="L2Lock" Grid.Row="3" Grid.Column="0" Content="L2=" Margin="0,4"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBox x:Name="L2Box" Grid.Row="3" Grid.Column="1" Height="22" Margin="4,2"
+                 VerticalContentAlignment="Center" Text="0.0" TextChanged="OnParamChanged"/>
+
+        <CheckBox x:Name="R2Lock" Grid.Row="4" Grid.Column="0" Content="R2=" Margin="0,4"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBox x:Name="R2Box" Grid.Row="4" Grid.Column="1" Height="22" Margin="4,2"
+                 VerticalContentAlignment="Center" Text="0.0"/>
+
+        <CheckBox x:Name="RlLock" Grid.Row="5" Grid.Column="0" Content="r_L=" Margin="0,4"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBox x:Name="RlBox" Grid.Row="5" Grid.Column="1" Height="22" Margin="4,2"
+                 VerticalContentAlignment="Center" TextChanged="OnParamChanged"/>
+        <Button Grid.Row="5" Grid.Column="2" Width="24" Height="22" Click="OnPickRl"
+                ToolTip="Iz crteza: odredite r_L (rastojanje od TS)"
+                FontWeight="Bold" Foreground="#C00000" Content="✕"/>
+
+        <CheckBox x:Name="RrLock" Grid.Row="6" Grid.Column="0" Content="r_R=" Margin="0,4"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBox x:Name="RrBox" Grid.Row="6" Grid.Column="1" Height="22" Margin="4,2"
+                 VerticalContentAlignment="Center" TextChanged="OnParamChanged"/>
+        <Button Grid.Row="6" Grid.Column="2" Width="24" Height="22" Click="OnPickRr"
+                ToolTip="Iz crteza: odredite r_R (rastojanje od TS)"
+                FontWeight="Bold" Foreground="#C00000" Content="✕"/>
+      </Grid>
+    </GroupBox>
+
+    <GroupBox Grid.Row="3" Header="Parametri automatske opcije" Padding="8,6,8,8" Margin="0,0,0,10">
+      <StackPanel Orientation="Horizontal">
+        <CheckBox x:Name="PrelazniceBox" Content="Prelaznice:" Margin="0,0,12,0"
+                  Checked="OnTipChanged" Unchecked="OnTipChanged"/>
+        <TextBlock Text="R/A=" VerticalAlignment="Center" Margin="0,0,6,0"/>
+        <TextBox x:Name="RaBox" Width="80" Height="22" Text="2.0" VerticalContentAlignment="Center"/>
+      </StackPanel>
+    </GroupBox>
+
+    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button Content="OK" Width="80" Height="28" Margin="0,0,8,0" IsDefault="True" Click="OnOk"/>
+      <Button Content="Prethodni" Width="80" Height="28" Margin="0,0,8,0" Click="OnPrev"
+              x:Name="PrevBtn"/>
+      <Button Content="Sledeći" Width="80" Height="28" Margin="0,0,8,0" Click="OnNext"
+              x:Name="NextBtn"/>
+      <Button Content="Cancel" Width="80" Height="28" IsCancel="True" Click="OnCancel"/>
+    </StackPanel>
+  </Grid>
+</Window>

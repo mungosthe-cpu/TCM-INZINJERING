@@ -1,5 +1,6 @@
 ﻿{
-    "Version":  "1.1.13",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.13.exe",
-    "ReleaseNotes":  "AutoCAD 2024+2026 dual build; teren filteri (Z=0, Z\u003c0, odstupanje); Add Line; Slope/Watershed; projekcija — izbor snimljenog terena."
+    "Version":  "1.1.14",
+    "ReleaseNotes":  "Situacija: Uredjivanje pop. osa (dodavanje/brisanje), brisanje bez obrtanja stacionaze; poduzni STA prati situaciju; UredjenjeKrivine dijalog vise nije opsecen; ispravke kontura/terena.",
+    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.14.exe",
+    "PublishedAt":  "2026-07-17"
 }

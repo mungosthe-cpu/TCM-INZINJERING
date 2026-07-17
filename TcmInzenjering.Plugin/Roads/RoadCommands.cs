@@ -219,6 +219,11 @@ public sealed partial class RoadCommands
     public void DrawStationLabelsCommand()
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
         var db = doc.Database;
         var ed = doc.Editor;
 
@@ -293,6 +298,11 @@ public sealed partial class RoadCommands
     public void AxisInfo()
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
         var db = doc.Database;
         var ed = doc.Editor;
 
@@ -327,6 +337,20 @@ public sealed partial class RoadCommands
     {
         CrossAxisCommandService.Run(AcApp.DocumentManager.MdiActiveDocument);
     }
+
+#if !BRICSCAD
+    [CommandMethod("TCMPOPSTAC", CommandFlags.Modal)]
+    public void DrawCrossAxisAtStation()
+    {
+        CrossAxisDrawCommandService.Run(AcApp.DocumentManager.MdiActiveDocument);
+    }
+
+    [CommandMethod("TCMPOPBRISI", CommandFlags.Modal)]
+    public void DeleteCrossAxes()
+    {
+        CrossAxisDeleteCommandService.Run(AcApp.DocumentManager.MdiActiveDocument);
+    }
+#endif
 
     [CommandMethod("TCMOSTAB", CommandFlags.Modal)]
     public void InsertAxisTable()
@@ -389,42 +413,60 @@ public sealed partial class RoadCommands
 
     private static ObjectId SelectPolyline(Editor ed, Database db)
     {
-        var options = new PromptEntityOptions("\nIzaberite polylinu osovine: ");
-        options.SetRejectMessage("\nIzaberite LWPOLYLINE ili 2D POLYLINE (ne 3D polyline / Alignment).");
-        options.AddAllowedClass(typeof(Polyline), exactMatch: false);
-        options.AddAllowedClass(typeof(Polyline2d), exactMatch: false);
-        var result = ed.GetEntity(options);
-        if (result.Status != PromptStatus.OK)
+        try
         {
+            var options = new PromptEntityOptions("\nIzaberite polylinu osovine: ")
+            {
+                AllowNone = false
+            };
+            options.SetRejectMessage("\nIzaberite LWPOLYLINE ili 2D POLYLINE (ne 3D polyline / Alignment).");
+            options.AddAllowedClass(typeof(Polyline), exactMatch: false);
+            options.AddAllowedClass(typeof(Polyline2d), exactMatch: false);
+            var result = ed.GetEntity(options);
+            if (result.Status != PromptStatus.OK || result.ObjectId.IsNull || result.ObjectId.IsErased)
+            {
+                return ObjectId.Null;
+            }
+
+            using var tr = db.TransactionManager.StartTransaction();
+            var entity = tr.GetObject(result.ObjectId, OpenMode.ForRead, openErased: false, forceOpenOnLockedLayer: true);
+            if (entity is Polyline pl)
+            {
+                if (pl.NumberOfVertices < 2)
+                {
+                    ed.WriteMessage("\nTCM-INZINJERING: polilinija mora imati bar 2 temena.");
+                    tr.Commit();
+                    return ObjectId.Null;
+                }
+
+                tr.Commit();
+                return result.ObjectId;
+            }
+
+            if (entity is Polyline2d poly2d)
+            {
+                var convertedId = ConvertPolyline2dToLightweight(tr, db, poly2d);
+                tr.Commit();
+                if (convertedId.IsNull)
+                {
+                    ed.WriteMessage("\nTCM-INZINJERING: nije uspela konverzija POLYLINE u LWPOLYLINE.");
+                }
+                else
+                {
+                    ed.WriteMessage("\nTCM-INZINJERING: stara POLYLINE je konvertovana u LWPOLYLINE.");
+                }
+
+                return convertedId;
+            }
+
+            tr.Commit();
             return ObjectId.Null;
         }
-
-        using var tr = db.TransactionManager.StartTransaction();
-        var entity = tr.GetObject(result.ObjectId, OpenMode.ForRead);
-        if (entity is Polyline)
+        catch (System.Exception ex)
         {
-            tr.Commit();
-            return result.ObjectId;
+            ed.WriteMessage($"\nTCM-INZINJERING: izbor polilinije nije uspeo — {ex.Message}");
+            return ObjectId.Null;
         }
-
-        if (entity is Polyline2d poly2d)
-        {
-            var convertedId = ConvertPolyline2dToLightweight(tr, db, poly2d);
-            tr.Commit();
-            if (convertedId.IsNull)
-            {
-                ed.WriteMessage("\nTCM-INZINJERING: nije uspela konverzija POLYLINE u LWPOLYLINE.");
-            }
-            else
-            {
-                ed.WriteMessage("\nTCM-INZINJERING: stara POLYLINE je konvertovana u LWPOLYLINE.");
-            }
-
-            return convertedId;
-        }
-
-        tr.Commit();
-        return ObjectId.Null;
     }
 
     private static ObjectId ConvertPolyline2dToLightweight(Transaction tr, Database db, Polyline2d source)
@@ -455,10 +497,41 @@ public sealed partial class RoadCommands
         }
 
         lw.Closed = source.Closed;
-        lw.Layer = source.Layer;
-        lw.Color = source.Color;
-        lw.Linetype = source.Linetype;
-        lw.LineWeight = source.LineWeight;
+        try
+        {
+            lw.Layer = source.Layer;
+        }
+        catch
+        {
+            lw.Layer = "0";
+        }
+
+        try
+        {
+            lw.Color = source.Color;
+        }
+        catch
+        {
+            // ignore
+        }
+
+        try
+        {
+            lw.Linetype = string.IsNullOrWhiteSpace(source.Linetype) ? "ByLayer" : source.Linetype;
+        }
+        catch
+        {
+            lw.Linetype = "ByLayer";
+        }
+
+        try
+        {
+            lw.LineWeight = source.LineWeight;
+        }
+        catch
+        {
+            // ignore
+        }
 
         var ownerId = source.OwnerId;
         var owner = (BlockTableRecord)tr.GetObject(ownerId, OpenMode.ForWrite);

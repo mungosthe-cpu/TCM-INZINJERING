@@ -12,7 +12,8 @@ internal static class PolylineToTangentConverter
         Polyline source,
         double curveRadius,
         double startStation,
-        string axisName)
+        string axisName,
+        IReadOnlyDictionary<int, double>? cornerRadii = null)
     {
         var vertices = ExtractVertices(source);
         if (vertices.Count < 2)
@@ -21,7 +22,7 @@ internal static class PolylineToTangentConverter
         }
 
         vertices = SimplifyCollinearVertices(vertices);
-        var elements = BuildElements(vertices, curveRadius);
+        var elements = BuildElements(vertices, curveRadius, cornerRadii);
         AssignStations(elements, startStation);
 
         return new RoadAxis
@@ -80,7 +81,10 @@ internal static class PolylineToTangentConverter
         return angle < toleranceDeg || Math.Abs(angle - 180.0) < toleranceDeg;
     }
 
-    private static List<AlignmentElement> BuildElements(IReadOnlyList<Point2d> vertices, double requestedRadius)
+    private static List<AlignmentElement> BuildElements(
+        IReadOnlyList<Point2d> vertices,
+        double requestedRadius,
+        IReadOnlyDictionary<int, double>? cornerRadii)
     {
         var elements = new List<AlignmentElement>();
 
@@ -91,6 +95,7 @@ internal static class PolylineToTangentConverter
         }
 
         var currentStart = To3d(vertices[0]);
+        var cornerNumber = 0;
 
         for (var i = 1; i < vertices.Count - 1; i++)
         {
@@ -115,7 +120,12 @@ internal static class PolylineToTangentConverter
                 continue;
             }
 
-            var radius = Math.Max(requestedRadius, MinSegmentLength);
+            cornerNumber++;
+            var cornerRadius = CornerRadiusStore.ResolveCornerRadius(
+                cornerRadii ?? new Dictionary<int, double>(),
+                cornerNumber,
+                requestedRadius);
+            var radius = Math.Max(cornerRadius, MinSegmentLength);
             var tangentLength = radius * Math.Tan(deflection / 2.0);
             tangentLength = Math.Min(tangentLength, inVec.Length * 0.45);
             tangentLength = Math.Min(tangentLength, outVec.Length * 0.45);

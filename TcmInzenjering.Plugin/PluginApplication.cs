@@ -46,6 +46,7 @@ public sealed class PluginApplication : IExtensionApplication
                 Roads.AxisChangeMonitor.Initialize();
                 Roads.AxisSelectionCoordinator.Initialize();
                 Roads.TerrainSelectionCoordinator.Initialize();
+                Roads.Terrain.ContourLabelMonitor.Initialize();
                 Roads.StationFontPreferences.Load();
                 Roads.ProjectFolderPreferences.Load();
                 Roads.Terrain.ContourPreferences.Load();
@@ -76,6 +77,7 @@ public sealed class PluginApplication : IExtensionApplication
         Roads.AxisChangeMonitor.Terminate();
         Roads.AxisSelectionCoordinator.Terminate();
         Roads.TerrainSelectionCoordinator.Terminate();
+        Roads.Terrain.ContourLabelMonitor.Terminate();
     }
 
 #if !BRICSCAD

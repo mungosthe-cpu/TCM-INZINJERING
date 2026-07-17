@@ -42,15 +42,7 @@ internal static class PluginUninstaller
             var scriptPath = Path.Combine(Path.GetTempPath(), "TcmInzenjering-uninstall.ps1");
             File.WriteAllText(scriptPath, BuildUninstallScript(), Encoding.UTF8);
 
-            var start = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            };
-            Process.Start(start);
+            HiddenPowerShell.StartFile(scriptPath);
 
 #if !BRICSCAD
             TryRemoveRibbonTab();
@@ -89,8 +81,7 @@ internal static class PluginUninstaller
 
     private static string BuildUninstallScript()
     {
-        // ASCII-safe skripta (encoding issues sa PS UTF-8 special chars).
-        return """
+        return HiddenPowerShell.HideConsoleSnippet + """
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
 Add-Type -AssemblyName System.Drawing | Out-Null
 $ErrorActionPreference = "Continue"
