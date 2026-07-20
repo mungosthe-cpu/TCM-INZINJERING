@@ -21,6 +21,10 @@ internal static class RoadXData
     public const string RoleTangentNode = "TNODE";
     /// <summary>3D polilinija — projekcija ose na teren.</summary>
     public const string RoleProjectedAxis = "PROJ";
+    /// <summary>Spoljna / unutrašnja ivica traka.</summary>
+    public const string RoleLaneEdge = "LEDG";
+    /// <summary>Hatch kolovoza između spoljnih ivica.</summary>
+    public const string RoleLaneHatch = "LHCH";
 
     public static void AttachSourcePolyline(Entity entity, string axisName)
     {
@@ -102,6 +106,66 @@ internal static class RoadXData
             new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleProjectedAxis),
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName)));
+    }
+
+    public static void AttachLaneEdge(
+        Entity entity,
+        string axisName,
+        string side,
+        string boundaryId = "")
+    {
+        SetXData(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleLaneEdge),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, side),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, boundaryId)));
+    }
+
+    public static bool TryReadLaneEdge(Entity entity, out string axisName)
+    {
+        axisName = string.Empty;
+        var values = entity.GetXDataForApplication(RoadDrawing.RegAppName);
+        if (values is null)
+        {
+            return false;
+        }
+
+        var items = values.AsArray();
+        if (items.Length < 3 || items[1].Value?.ToString() != RoleLaneEdge)
+        {
+            return false;
+        }
+
+        axisName = items[2].Value?.ToString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(axisName);
+    }
+
+    public static void AttachLaneHatch(Entity entity, string axisName)
+    {
+        SetXData(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleLaneHatch),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, axisName)));
+    }
+
+    public static bool TryReadLaneHatch(Entity entity, out string axisName)
+    {
+        axisName = string.Empty;
+        var values = entity.GetXDataForApplication(RoadDrawing.RegAppName);
+        if (values is null)
+        {
+            return false;
+        }
+
+        var items = values.AsArray();
+        if (items.Length < 3 || items[1].Value?.ToString() != RoleLaneHatch)
+        {
+            return false;
+        }
+
+        axisName = items[2].Value?.ToString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(axisName);
     }
 
     public static bool TryReadProjectedAxis(Entity entity, out string axisName)

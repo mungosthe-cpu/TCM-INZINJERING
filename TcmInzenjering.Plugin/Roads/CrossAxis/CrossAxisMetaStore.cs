@@ -2,6 +2,12 @@ using Autodesk.AutoCAD.DatabaseServices;
 
 namespace TcmInzenjering.Plugin.Roads.CrossAxis;
 
+internal enum CrossAxisOrigin
+{
+    Manual = 0,
+    GeneratedEnd = 1
+}
+
 /// <summary>
 /// Stacionaža i fiksno ime poprečne ose — preživljava pomeranje osovine.
 /// </summary>
@@ -14,6 +20,7 @@ internal sealed class CrossAxisMeta
     public double LeftWidth { get; init; }
     public double RightWidth { get; init; }
     public string Prefix { get; init; } = string.Empty;
+    public CrossAxisOrigin Origin { get; init; } = CrossAxisOrigin.Manual;
     public bool HasFixedName => !string.IsNullOrWhiteSpace(FixedName);
 }
 
@@ -32,7 +39,8 @@ internal static class CrossAxisMetaStore
         double leftWidth,
         double rightWidth,
         string prefix,
-        string? fixedName = null)
+        string? fixedName = null,
+        CrossAxisOrigin origin = CrossAxisOrigin.Manual)
     {
         var dictionary = GetDictionary(tr, db, OpenMode.ForWrite);
         var key = KeyPrefix + handle;
@@ -43,7 +51,8 @@ internal static class CrossAxisMetaStore
             new TypedValue((int)DxfCode.Int32, axisNumber),
             new TypedValue((int)DxfCode.Real, leftWidth),
             new TypedValue((int)DxfCode.Real, rightWidth),
-            new TypedValue((int)DxfCode.Text, prefix ?? string.Empty));
+            new TypedValue((int)DxfCode.Text, prefix ?? string.Empty),
+            new TypedValue((int)DxfCode.Int32, (int)origin));
 
         if (dictionary.Contains(key))
         {
@@ -80,6 +89,9 @@ internal static class CrossAxisMetaStore
         var leftWidth = items.Length >= 5 ? Convert.ToDouble(items[4].Value) : 0;
         var rightWidth = items.Length >= 6 ? Convert.ToDouble(items[5].Value) : 0;
         var prefix = items.Length >= 7 ? items[6].Value?.ToString() ?? string.Empty : string.Empty;
+        var origin = items.Length >= 8
+            ? (CrossAxisOrigin)Convert.ToInt32(items[7].Value)
+            : CrossAxisOrigin.Manual;
         return new CrossAxisMeta
         {
             Station = station,
@@ -88,7 +100,8 @@ internal static class CrossAxisMetaStore
             AxisNumber = axisNumber,
             LeftWidth = leftWidth,
             RightWidth = rightWidth,
-            Prefix = prefix.Trim()
+            Prefix = prefix.Trim(),
+            Origin = origin
         };
     }
 
@@ -130,6 +143,9 @@ internal static class CrossAxisMetaStore
             var leftWidth = items.Length >= 5 ? Convert.ToDouble(items[4].Value) : 0;
             var rightWidth = items.Length >= 6 ? Convert.ToDouble(items[5].Value) : 0;
             var prefix = items.Length >= 7 ? items[6].Value?.ToString() ?? string.Empty : string.Empty;
+            var origin = items.Length >= 8
+                ? (CrossAxisOrigin)Convert.ToInt32(items[7].Value)
+                : CrossAxisOrigin.Manual;
             list.Add((handle, new CrossAxisMeta
             {
                 Station = station,
@@ -138,7 +154,8 @@ internal static class CrossAxisMetaStore
                 AxisNumber = axisNumber,
                 LeftWidth = leftWidth,
                 RightWidth = rightWidth,
-                Prefix = prefix.Trim()
+                Prefix = prefix.Trim(),
+                Origin = origin
             }));
         }
 
@@ -234,6 +251,7 @@ internal static class CrossAxisMetaStore
         const double tolerance = 1e-3;
         var unique = new List<CrossAxisMeta>();
         foreach (var (_, meta) in LoadAllForRoadAxis(tr, db, roadAxisName)
+                     .Where(p => p.Meta.Origin == CrossAxisOrigin.Manual)
                      .OrderBy(p => p.Meta.Station))
         {
             if (unique.Any(u => Math.Abs(u.Station - meta.Station) <= tolerance))

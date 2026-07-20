@@ -3,8 +3,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 namespace TcmInzenjering.Plugin.Roads.Profile;
 
 /// <summary>
-/// Vertikalni profil (niveleta) — kote po stacionaži.
-/// Za sada nema namenskog TCMa; kad se doda projektovana niveleta, puni ovaj sampler.
+/// Vertikalni profil (niveleta) — kote po stacionaži iz VerticalProfileStore.
 /// </summary>
 internal static class ProfileDesignGradeSampler
 {
@@ -12,20 +11,12 @@ internal static class ProfileDesignGradeSampler
         Transaction tr,
         Database db,
         string axisName,
-        out List<(double Station, double Elevation)> samples)
-    {
-        samples = [];
-        // TODO: učitati projektovanu niveletu kada postoji (vertikalni profil / TCLNV…).
-        _ = tr;
-        _ = db;
-        _ = axisName;
-        return false;
-    }
+        out List<(double Station, double Elevation)> samples) =>
+        ProfileGradeSampler.TryLoadSamples(tr, db, axisName, out samples);
 }
 
 /// <summary>
-/// Širine kolovoza levo/desno po stacionaži (jedna rubrika, dve vrednosti).
-/// Punice se kad se definišu širine traka u projektu.
+/// Širine kolovoza levo/desno po stacionaži.
 /// </summary>
 internal static class ProfileLaneWidthSampler
 {
@@ -35,14 +26,6 @@ internal static class ProfileLaneWidthSampler
         string axisName,
         double station,
         out double leftWidth,
-        out double rightWidth)
-    {
-        leftWidth = 0;
-        rightWidth = 0;
-        _ = tr;
-        _ = db;
-        _ = axisName;
-        _ = station;
-        return false;
-    }
+        out double rightWidth) =>
+        ProfileLaneWidthStore.TryGetAtStation(tr, db, axisName, station, out leftWidth, out rightWidth);
 }

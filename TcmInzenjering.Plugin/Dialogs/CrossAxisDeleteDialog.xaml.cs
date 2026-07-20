@@ -49,7 +49,7 @@ public partial class CrossAxisDeleteDialog : Window
             MessageBox.Show(
                 this,
                 "Izaberite jednu ili više poprečnih osa u tabeli.",
-                "TCM-INŽINJERING",
+                "TCM-ROADS",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -58,7 +58,7 @@ public partial class CrossAxisDeleteDialog : Window
         var confirm = MessageBox.Show(
             this,
             $"Obrisati {handles.Count} poprečn{(handles.Count == 1 ? "u osu" : "ih osa")}?",
-            "TCM-INŽINJERING",
+            "TCM-ROADS",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 

@@ -84,7 +84,7 @@ internal static class CrossAxisDeleteCommandService
         }
 
         doc.Editor.WriteMessage(
-            $"\nTCM-INZINJERING: Obrisano {handles.Count} poprecnih osa" +
+            $"\nTCM-ROADS: Obrisano {handles.Count} poprecnih osa" +
             (affected.Count > 0 ? $" (osovine: {string.Join(", ", affected)})." : "."));
         doc.Editor.Regen();
     }
@@ -133,7 +133,7 @@ internal static class CrossAxisDeleteCommandService
 
         if (handles.Count == 0)
         {
-            ed.WriteMessage("\nTCM-INZINJERING: U selekciji nema poprečnih osa.");
+            ed.WriteMessage("\nTCM-ROADS: U selekciji nema poprečnih osa.");
             return Array.Empty<long>();
         }
 

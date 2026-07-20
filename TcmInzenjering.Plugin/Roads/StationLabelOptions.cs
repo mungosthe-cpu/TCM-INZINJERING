@@ -29,4 +29,29 @@ public sealed class StationLabelOptions
     public short StationTextColorIndex { get; init; } = DrawingColorDefaults.StationText;
     public short StationTickColorIndex { get; init; } = DrawingColorDefaults.StationTick;
     public short SegmentLabelColorIndex { get; init; } = DrawingColorDefaults.SegmentLabel;
+
+    public StationLabelOptions WithTextHeight(double textHeight) => new()
+    {
+        EqualIntervalInBounds = EqualIntervalInBounds,
+        WholeInterval = WholeInterval,
+        StartStation = StartStation,
+        EndStation = EndStation,
+        AlignToStart = AlignToStart,
+        LabelAtStart = LabelAtStart,
+        LabelAtEnd = LabelAtEnd,
+        LabelAtMainPoints = LabelAtMainPoints,
+        Interval = Interval,
+        Prefix = Prefix,
+        TextHeight = textHeight,
+        TickLength = TickLength,
+        LabelSideSign = LabelSideSign,
+        AxisCounterStart = AxisCounterStart,
+        LabelFormat = LabelFormat,
+        ChainageFormat = ChainageFormat,
+        DrawSegmentLabels = DrawSegmentLabels,
+        AxisColorIndex = AxisColorIndex,
+        StationTextColorIndex = StationTextColorIndex,
+        StationTickColorIndex = StationTickColorIndex,
+        SegmentLabelColorIndex = SegmentLabelColorIndex
+    };
 }

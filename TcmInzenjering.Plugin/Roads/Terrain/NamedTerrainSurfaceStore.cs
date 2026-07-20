@@ -73,7 +73,19 @@ internal static class NamedTerrainSurfaceStore
             new TypedValue((int)DxfCode.Text, name)));
     }
 
-    public static void SaveSurface(Transaction tr, Database db, string name, IReadOnlyList<Point3d> points)
+    public static void SaveSurface(Transaction tr, Database db, string name, IReadOnlyList<Point3d> points) =>
+        SaveSurface(tr, db, name, points, setActive: true);
+
+    /// <summary>
+    /// Snima imenovani skup tačaka. Ako <paramref name="setActive"/> = false (npr. *_Granica),
+    /// ne menja aktivni teren ni radni TerrainPointStore.
+    /// </summary>
+    public static void SaveSurface(
+        Transaction tr,
+        Database db,
+        string name,
+        IReadOnlyList<Point3d> points,
+        bool setActive)
     {
         name = NormalizeName(name);
         if (points.Count == 0)
@@ -98,7 +110,6 @@ internal static class NamedTerrainSurfaceStore
         }
         else
         {
-            // zadrži original casing prethodnog ako postoji
             for (var i = 0; i < names.Count; i++)
             {
                 if (string.Equals(names[i], name, StringComparison.OrdinalIgnoreCase))
@@ -116,10 +127,87 @@ internal static class NamedTerrainSurfaceStore
         }
 
         WriteRecord(tr, db, IndexKey, indexBuffer);
-        SetActiveName(tr, db, name);
 
-        // Radni skup = aktivni teren.
-        TerrainPointStore.Save(tr, db, points);
+        if (setActive)
+        {
+            SetActiveName(tr, db, name);
+            TerrainPointStore.Save(tr, db, points);
+        }
+    }
+
+    /// <summary>Ime pratećeg skupa tačaka granice: Teren_1 → Teren_1_Granica.</summary>
+    public static string BoundaryCompanionName(string? surfaceName)
+    {
+        var baseName = string.IsNullOrWhiteSpace(surfaceName)
+            ? "Teren_1"
+            : NormalizeName(surfaceName);
+        if (baseName.EndsWith("_Granica", StringComparison.OrdinalIgnoreCase))
+        {
+            return baseName;
+        }
+
+        return baseName + "_Granica";
+    }
+
+    public static bool IsBoundaryCompanionName(string? name) =>
+        !string.IsNullOrWhiteSpace(name) &&
+        name.EndsWith("_Granica", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Briše imenovani skup tačaka iz NOD (npr. Teren_1_Granica posle brisanja granice).</summary>
+    public static bool DeleteSurface(Transaction tr, Database db, string name)
+    {
+        name = NormalizeName(name);
+        var dictionary = GetDictionary(tr, db, OpenMode.ForWrite);
+        var key = SurfaceKey(name);
+        if (!dictionary.Contains(key))
+        {
+            var match = ListNames(tr, db)
+                .FirstOrDefault(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+            {
+                return false;
+            }
+
+            key = SurfaceKey(match);
+            name = match;
+            if (!dictionary.Contains(key))
+            {
+                return false;
+            }
+        }
+
+        var record = (Xrecord)tr.GetObject(dictionary.GetAt(key), OpenMode.ForWrite);
+        dictionary.Remove(key);
+        record.Erase();
+
+        var names = ListNames(tr, db)
+            .Where(n => !string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var indexBuffer = new ResultBuffer();
+        foreach (var n in names)
+        {
+            indexBuffer.Add(new TypedValue((int)DxfCode.Text, n));
+        }
+
+        WriteRecord(tr, db, IndexKey, names.Count == 0 ? new ResultBuffer() : indexBuffer);
+
+        var active = GetActiveName(tr, db);
+        if (string.Equals(active, name, StringComparison.OrdinalIgnoreCase))
+        {
+            if (names.Count > 0)
+            {
+                SetActiveName(tr, db, names[0]);
+            }
+            else if (dictionary.Contains(ActiveKey))
+            {
+                var act = (Xrecord)tr.GetObject(dictionary.GetAt(ActiveKey), OpenMode.ForWrite);
+                dictionary.Remove(ActiveKey);
+                act.Erase();
+            }
+        }
+
+        return true;
     }
 
     public static IReadOnlyList<Point3d>? TryLoadSurface(Transaction tr, Database db, string name)

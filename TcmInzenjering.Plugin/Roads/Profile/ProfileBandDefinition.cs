@@ -119,6 +119,22 @@ public sealed class ProfileTableType
                     Content = ProfileBandContent.TerrainElevations,
                     Height = 10.0,
                     TextAci = 3
+                },
+                new ProfileTableBand
+                {
+                    Code = "LK_4",
+                    Title = "KOTE NIVELETE",
+                    Content = ProfileBandContent.GradeElevations,
+                    Height = 10.0,
+                    TextAci = 1
+                },
+                new ProfileTableBand
+                {
+                    Code = "LK_5",
+                    Title = "SIRINE TRAKA",
+                    Content = ProfileBandContent.LaneWidths,
+                    Height = 10.0,
+                    TextAci = 7
                 }
             ]
         };

@@ -10,6 +10,8 @@ internal static class AxisChangeMonitor
     private static readonly HashSet<string> AxisGeometryDirtyAxes = new(StringComparer.OrdinalIgnoreCase);
     private static bool _idleHooked;
     private static int _suppressModifiedDepth;
+    private static DateTime _earliestIdleUtc = DateTime.MinValue;
+    private const int IdleDebounceMs = 200;
 
     private static string[] PendingPolylineAxes = Array.Empty<string>();
     private static string[] PendingAxisGeometryAxes = Array.Empty<string>();
@@ -123,6 +125,11 @@ internal static class AxisChangeMonitor
     private static void OnIdleUpdate(object? sender, EventArgs e)
     {
         DrainDirtyAxesToPending();
+        if (DateTime.UtcNow < _earliestIdleUtc)
+        {
+            return;
+        }
+
         if (PendingPolylineAxes.Length == 0 && PendingAxisGeometryAxes.Length == 0)
         {
             _idleHooked = false;
@@ -165,12 +172,12 @@ internal static class AxisChangeMonitor
             if (updated > 0)
             {
                 doc.Editor.WriteMessage(
-                    $"\nTCM-INZINJERING: Azurirana geometrija osovine, oznake i 3D projekcija (ako postoji) — {updated} elemenata.");
+                    $"\nTCM-ROADS: Azurirana geometrija osovine, oznake, ivice kolovoza i 3D projekcija (ako postoje) — {updated} elemenata.");
             }
         }
         catch (System.Exception ex)
         {
-            doc.Editor.WriteMessage($"\nTCM-INZINJERING: greska pri azuriranju stacionaza - {ex.Message}");
+            doc.Editor.WriteMessage($"\nTCM-ROADS: greska pri azuriranju stacionaza - {ex.Message}");
         }
         finally
         {
@@ -207,6 +214,7 @@ internal static class AxisChangeMonitor
 
     private static void EnsureIdleHooked()
     {
+        _earliestIdleUtc = DateTime.UtcNow.AddMilliseconds(IdleDebounceMs);
         if (_idleHooked)
         {
             return;

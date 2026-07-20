@@ -208,7 +208,7 @@ public partial class ProfileTerrainDialog : Window
             !TryParse(EndStationBox.Text, out var end) ||
             end <= start)
         {
-            MessageBox.Show(this, "Unesite ispravan opseg stacionaze (Od < Do).", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Unesite ispravan opseg stacionaze (Od < Do).", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -217,7 +217,7 @@ public partial class ProfileTerrainDialog : Window
             !TryParse(TopElevBox.Text, out var topElev) ||
             topElev <= baseElev)
         {
-            MessageBox.Show(this, "Referentna visina mora biti manja od visine vrha profila.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Referentna visina mora biti manja od visine vrha profila.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -227,7 +227,7 @@ public partial class ProfileTerrainDialog : Window
             !int.TryParse(Convert.ToString(VScaleBox.SelectedItem), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out var v))
         {
-            MessageBox.Show(this, "Izaberite horizontalnu i vertikalnu razmeru.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Izaberite horizontalnu i vertikalnu razmeru.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }

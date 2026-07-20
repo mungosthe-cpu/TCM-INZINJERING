@@ -200,6 +200,7 @@ internal static class ProfileXData
     public const string RoleView = "PODV";
     public const string RoleTerrain = "PODT";
     public const string RoleTable = "PODTBL";
+    public const string RoleGrade = "PODG";
 
     public static void AttachView(Entity entity, string profileId, string axisName)
     {
@@ -215,6 +216,14 @@ internal static class ProfileXData
         Set(entity, new ResultBuffer(
             new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleTerrain),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, profileId)));
+    }
+
+    public static void AttachGrade(Entity entity, string profileId)
+    {
+        Set(entity, new ResultBuffer(
+            new TypedValue((int)DxfCode.ExtendedDataRegAppName, RoadDrawing.RegAppName),
+            new TypedValue((int)DxfCode.ExtendedDataAsciiString, RoleGrade),
             new TypedValue((int)DxfCode.ExtendedDataAsciiString, profileId)));
     }
 
@@ -268,7 +277,7 @@ internal static class ProfileXData
             }
 
             var text = Convert.ToString(items[i].Value) ?? string.Empty;
-            if (text is RoleView or RoleTerrain or RoleTable)
+            if (text is RoleView or RoleTerrain or RoleTable or RoleGrade)
             {
                 role = text;
                 if (i + 1 < items.Length && items[i + 1].TypeCode == (int)DxfCode.ExtendedDataAsciiString)
@@ -349,7 +358,7 @@ internal static class ProfileViewStore
         return Parse(record.Data?.AsArray(), profileId);
     }
 
-    public static IReadOnlyList<ProfileViewData> LoadAllForAxis(Transaction tr, Database db, string axisName)
+    public static IReadOnlyList<ProfileViewData> LoadAll(Transaction tr, Database db)
     {
         var result = new List<ProfileViewData>();
         var dictionary = GetDictionary(tr, db, OpenMode.ForRead);
@@ -368,18 +377,20 @@ internal static class ProfileViewStore
 
             var record = (Xrecord)tr.GetObject(recordId, OpenMode.ForRead);
             var view = Parse(record.Data?.AsArray(), keyText[Prefix.Length..]);
-            if (view is null)
-            {
-                continue;
-            }
-
-            if (string.Equals(view.AxisName, axisName, StringComparison.OrdinalIgnoreCase))
+            if (view is not null)
             {
                 result.Add(view);
             }
         }
 
         return result;
+    }
+
+    public static IReadOnlyList<ProfileViewData> LoadAllForAxis(Transaction tr, Database db, string axisName)
+    {
+        return LoadAll(tr, db)
+            .Where(v => string.Equals(v.AxisName, axisName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     private static ProfileViewData? Parse(TypedValue[]? data, string fallbackId)

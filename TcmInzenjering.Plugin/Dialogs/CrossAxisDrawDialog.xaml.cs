@@ -21,6 +21,8 @@ public partial class CrossAxisDrawDialog : Window
 {
     private readonly double _minStation;
     private readonly double _maxStation;
+    private readonly double _styleTextHeight;
+    private readonly string? _styleFontFile;
 
     public CrossAxisDrawCloseAction CloseAction { get; private set; } = CrossAxisDrawCloseAction.Cancelled;
     public CrossAxisDrawDialogResult Result { get; private set; } = new();
@@ -32,6 +34,8 @@ public partial class CrossAxisDrawDialog : Window
     {
         _minStation = minStation;
         _maxStation = maxStation;
+        _styleTextHeight = initial.TextHeightOverride;
+        _styleFontFile = initial.FontFileNameOverride;
         InitializeComponent();
         StationRangeText.Text = $"({minStation:0.000}, {maxStation:0.000})";
         StationBox.Text = initial.Station.ToString("0.000", CultureInfo.InvariantCulture);
@@ -182,7 +186,9 @@ public partial class CrossAxisDrawDialog : Window
             Prefix = PrefixBox.Text.Trim(),
             CounterStart = counter,
             IncreasingNumbers = IncreasingRadio.IsChecked == true,
-            FixedName = FixedNameBox.Text.Trim()
+            FixedName = FixedNameBox.Text.Trim(),
+            TextHeightOverride = _styleTextHeight,
+            FontFileNameOverride = _styleFontFile
         };
     }
 

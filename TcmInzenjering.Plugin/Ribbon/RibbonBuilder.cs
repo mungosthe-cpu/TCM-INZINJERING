@@ -6,12 +6,12 @@ using AcApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 namespace TcmInzenjering.Plugin.Ribbon;
 
 /// <summary>
-/// CGS Labs stil: hub tab TCM-INŽINJERING (SITUACIJA, Poduzni profil) + sekundarni tabovi.
+/// CGS Labs stil: hub tab TCM-ROADS (SITUACIJA, Poduzni profil) + sekundarni tabovi.
 /// </summary>
 internal static class RibbonBuilder
 {
-    public const string TabId = "TCM_INZINJERING_TAB";
-    public const string TabTitle = "TCM-INŽINJERING";
+    public const string TabId = "TCM_ROADS_TAB";
+    public const string TabTitle = "TCM-ROADS";
 
     public const string SituacijaTabId = "TCM_SITUACIJA_TAB";
     public const string SituacijaTabTitle = "Situacija-TCM";
@@ -38,6 +38,7 @@ internal static class RibbonBuilder
         }
 
         RemoveTab(ribbon, TabId);
+        RemoveTab(ribbon, "TCM_INZINJERING_TAB"); // stari hub id
         RemoveTab(ribbon, TerenTabId);
         RemoveTab(ribbon, SituacijaTabId);
         RemoveTab(ribbon, PoduzniProfilTabId);
@@ -198,6 +199,7 @@ internal static class RibbonBuilder
         }
 
         RemoveTab(ribbon, TabId);
+        RemoveTab(ribbon, "TCM_INZINJERING_TAB"); // stari hub id
         RemoveTab(ribbon, TerenTabId);
         RemoveTab(ribbon, SituacijaTabId);
         RemoveTab(ribbon, PoduzniProfilTabId);
@@ -235,6 +237,13 @@ internal static class RibbonBuilder
                 "poduzni_profil",
                 PoduzniProfilTabId,
                 new PoduzniProfilModuleHandler()));
+
+        AddPanel(tab, "PROJEKAT",
+            CreateLargeCommandButton(
+                "PROJEKAT",
+                "Pregled elemenata projekta (teren, osovina, poduzni).",
+                "tcm_projekat",
+                "TCMPROJEKAT "));
 
         AddPanel(tab, "INFO",
             CreateLargeCommandButton(
@@ -282,18 +291,18 @@ internal static class RibbonBuilder
                 "3DFACE / rebuild",
                 "Ponovo gradi TIN i border iz tacaka aktivnog terena.",
                 "TCMTERFACE ",
-                "projekcija"),
+                "tin_surface"),
             CreateAddTinLineSplitButton(),
             CreateCommandButton(
                 "Swap 3DFACE",
                 "Zamenjuje zajednicku ivicu (Civil Swap Edge).",
                 "TCMTERSWAP ",
-                "osovina"),
+                "tin_line"),
             CreateCommandButton(
                 "Brisi 3DFACE",
                 "Brise TIN ivice/trouglove.",
                 "TCMTERBRISI ",
-                "refresh"));
+                "erase_sample_lines"));
 
         AddPanel(tab, "Analyze / Display",
             CreateContourSplitButton(),
@@ -306,22 +315,27 @@ internal static class RibbonBuilder
                 "Slope",
                 "Nagib (boje + strelice) na aktivnom TIN-u.",
                 "TCMTERSLOPE ",
-                "projekcija"),
+                "slope"),
             CreateCommandButton(
                 "Watershed",
                 "Slivovi (watershed) na aktivnom TIN-u.",
                 "TCMTERWSHD ",
-                "info"),
+                "watershed"),
+            CreateCommandButton(
+                "Zapremina",
+                "Panel poverenja zapremine (TIN + Grid + sekcije).",
+                "TCMTERZAP ",
+                "volume"),
             CreateCommandButton(
                 "Kotne oznake",
                 "Kotna oznaka na izohipsi.",
                 "TCMTERIZOLBL ",
-                "staco"),
+                "label_contours"),
             CreateCommandButton(
                 "Spot elevacija",
                 "Z na kliknutoj tacki terena.",
                 "TCMTERSPOT ",
-                "info"));
+                "spot_elev"));
 
         AddPanel(tab, "Teren",
             CreateCommandButton(
@@ -354,30 +368,35 @@ internal static class RibbonBuilder
                 "3DFACE teren",
                 "Delaunay TIN — tacke + breakline + granica + sacuvani swap/delete.",
                 "TCMTERFACE ",
-                "projekcija"),
+                "tin_surface"),
             CreateAddTinLineSplitButton(),
             CreateCommandButton(
                 "Swap 3DFACE",
                 "Zamenjuje zajednicku ivicu dva trougla (kao Civil 3D Swap Edge).",
                 "TCMTERSWAP ",
-                "osovina"),
+                "tin_line"),
             CreateCommandButton(
                 "Brisi 3DFACE",
                 "Brise TIN ivice/trouglove (kao Civil 3D Delete Line).",
                 "TCMTERBRISI ",
-                "refresh"));
+                "erase_sample_lines"));
 
         AddPanel(tab, "Definicija",
             CreateCommandButton(
                 "Breakline",
                 "Polilinije kao obavezne TIN ivice (Civil/Plateia breakline).",
                 "TCMTERBREAK ",
-                "osovina"),
+                "breakline"),
+            CreateCommandButton(
+                "Breakline lejer",
+                "Spoji tacke terena duz linija na lejeru i swap TIN da ne sece liniju.",
+                "TCMTERBRKLAY ",
+                "breakline"),
             CreateCommandButton(
                 "Granica",
                 "Outer ili Hide granica terena (zatvorena polilinija).",
                 "TCMTERBOUND ",
-                "plo2tan"),
+                "boundary"),
             CreateCommandButton(
                 "Ocisti TIN edit",
                 "Brise sacuvane swap/delete operacije (breakline/granica ostaju).",
@@ -389,7 +408,17 @@ internal static class RibbonBuilder
                 "Projekcija na teren",
                 "Projektuje osovinu na 3D teren (Face/Mesh/Tin Surface).",
                 "TCMPROJTER ",
-                "projekcija"));
+                "drape"));
+
+        AddPanel(tab, "Geodezija",
+            CreateSurveyGridSplitButton());
+
+        AddPanel(tab, "Podloga",
+            CreateCommandButton(
+                "Podloga",
+                "Georeferencirana satelitska / ortofoto podloga (Autodesk Esri ili WMS/ArcGIS/lokalni fajl).",
+                "TCMTERMAP ",
+                "dtm"));
 
         AddPanel(tab, "Izohipse",
             CreateContourSplitButton(),
@@ -397,29 +426,34 @@ internal static class RibbonBuilder
                 "Kotne oznake",
                 "Dodaje kotnu oznaku na izabranu izohipsu.",
                 "TCMTERIZOLBL ",
-                "staco"),
+                "label_contours"),
             CreateCommandButton(
                 "Spot elevacija",
                 "Prikazuje Z na kliknutoj tacki terena.",
                 "TCMTERSPOT ",
-                "info"));
+                "spot_elev"));
 
         AddPanel(tab, "Analiza",
             CreateCommandButton(
                 "Slope",
                 "Boji 3DFACE po nagibu i crta strelice padine (Civil Slope).",
                 "TCMTERSLOPE ",
-                "projekcija"),
+                "slope"),
             CreateCommandButton(
                 "Watershed",
                 "Crta slivove (watershed) na TIN-u — tok ka suncu depresije / granici.",
                 "TCMTERWSHD ",
-                "info"));
+                "watershed"),
+            CreateCommandButton(
+                "Zapremina",
+                "Panel poverenja: TIN–TIN + Grid + sekcije, mapa neslaganja, izvestaj.",
+                "TCMTERZAP ",
+                "volume"));
 
         AddPanel(tab, "Zatvori",
             CreateCloseButton(
                 "Zatvori",
-                "Zatvara tab Teren i vraca na TCM-INŽINJERING.",
+                "Zatvara tab Teren i vraca na TCM-ROADS.",
                 new CloseTerenHandler()));
 
         return tab;
@@ -437,28 +471,40 @@ internal static class RibbonBuilder
         AddPanel(tab, "Osovina",
             CreateCommandButton("PLO u tangentni poligon", "Pretvara polylinu u osovinu.", "TCMPLO2TAN ", "plo2tan"),
             CreateCommandButton(
+                "Best Fit osovina",
+                "Aproksimira snimljenu polylinu čistim PI pravcima i kreira TCM osovinu.",
+                "TCMBESTFIT ",
+                "plo2tan"),
+            CreateCommandButton(
                 "Rucno uredjivanje zaobljenja",
                 "UredjenjeKrivine — Auto/Ručno (LRL, LR, RL, LL); pick R sa crteza (✕).",
                 "TCMZAOUREDI ",
-                "osovina"),
-            CreateCommandButton("Stacionaze", "Oznake stacionaze duz ose.", "TCMSTACOZN ", "staco"),
-            CreateCommandButton("Azuriraj stac.", "Azurira stacionaze posle pomeranja.", "TCMSTACAZUR ", "refresh"));
+                "curve_edit"),
+            CreateCommandButton("Stacionaze", "Oznake stacionaze duz ose.", "TCMSTACOZN ", "station_labels"),
+            CreateCommandButton("Azuriraj stac.", "Azurira stacionaze posle pomeranja.", "TCMSTACAZUR ", "refresh_labels"));
 
         AddPanel(tab, "Info / tabela",
-            CreateCommandButton("Info osovine", "Tabela elemenata u komandnoj liniji.", "TCMOSINFO ", "info"),
-            CreateCommandButton("Tabela osovine", "Ubacuje tabelu elemenata u crtez.", "TCMOSTAB ", "info"));
+            CreateCommandButton("Info osovine", "Tabela elemenata u komandnoj liniji.", "TCMOSINFO ", "alignment_data"),
+            CreateCommandButton("Tabela osovine", "Ubacuje tabelu elemenata u crtez.", "TCMOSTAB ", "tables_manager"));
+
+        AddPanel(tab, "Kolovoz",
+            CreateCommandButton(
+                "Sirine traka",
+                "Upravljanje tipovima i sirinama levih/desnih traka aktivne ose.",
+                "TCMKOLSIR ",
+                "sample_lines"));
 
         AddPanel(tab, "Teren",
-            CreateCommandButton("Projekcija na teren", "Projektuje osovinu na 3D teren.", "TCMPROJTER ", "projekcija"));
+            CreateCommandButton("Projekcija na teren", "Projektuje osovinu na 3D teren.", "TCMPROJTER ", "drape"));
 
         AddPanel(tab, "Poprecne ose",
-            CreateCommandButton("Pozicija pop. osa", "Polozaj oznaka i stacionaza.", "TCMPOPOSPOZ ", "staco"),
+            CreateCommandButton("Pozicija pop. osa", "Polozaj oznaka i stacionaza.", "TCMPOPOSPOZ ", "sample_label_settings"),
             CreateCrossAxisEditSplitButton());
 
         AddPanel(tab, "Zatvori",
             CreateCloseButton(
                 "Zatvori",
-                "Zatvara tab Situacija i vraca na TCM-INŽINJERING.",
+                "Zatvara tab Situacija i vraca na TCM-ROADS.",
                 new CloseSituacijaHandler()));
 
         return tab;
@@ -479,22 +525,41 @@ internal static class RibbonBuilder
                 "Tabela + teren",
                 "CGSA Unos terena: dijalog, grafik i banderola (OZNAKE/STAC/KOTE TERENA).",
                 "TCMPODCRT ",
-                "poduzni_profil"),
+                "draw_profile"),
             CreateCommandButton(
-                "Tabela profila",
-                "Isto kao Unos terena (kompletan poduzni view).",
+                "Samo tabela",
+                "Tabela i mreža bez linije terena. Teren: TCMPODTER. Niveleta: TCMNIVODTER.",
                 "TCMPODTAB ",
-                "info"),
+                "profile_table"),
             CreateCommandButton(
                 "Teren u profil",
                 "Ponovo crta samo zeleni teren u postojeci profil.",
                 "TCMPODTER ",
-                "projekcija"));
+                "terrain_in_profile"));
+
+        AddPanel(tab, "Niveleta",
+            CreateCommandButton(
+                "Niveleta od terena",
+                "Kreira projektovanu niveletu od TCMPROJTER + ofset (TCMNIVODTER).",
+                "TCMNIVODTER ",
+                "draw_profile"),
+            CreateCommandButton(
+                "Uredi PVI",
+                "Rucni unos / izmena PVI nivelete (TCMNIVUREDI).",
+                "TCMNIVUREDI ",
+                "profile_table"));
+
+        AddPanel(tab, "Poprecni",
+            CreateCommandButton(
+                "Poprecni profili",
+                "Crta section views iz pop. osa + TIN (+ niveleta) — TCMPOPPRF.",
+                "TCMPOPPRF ",
+                "sample_lines"));
 
         AddPanel(tab, "Zatvori",
             CreateCloseButton(
                 "Zatvori",
-                "Zatvara tab Poduzni profil i vraca na TCM-INŽINJERING.",
+                "Zatvara tab Poduzni profil i vraca na TCM-ROADS.",
                 new ClosePoduzniProfilHandler()));
 
         return tab;
@@ -516,7 +581,7 @@ internal static class RibbonBuilder
     /// </summary>
     private static RibbonSplitButton CreateCrossAxisEditSplitButton()
     {
-        const string icon = "staco";
+        const string icon = "sample_lines";
         var split = new RibbonSplitButton
         {
             Id = "TCM_CROSS_AXIS_EDIT",
@@ -535,12 +600,12 @@ internal static class RibbonBuilder
             "Dodavanje poprecnih osa",
             "Crtanje poprecnih osa na stacionazi (TCMPOPSTAC).",
             "TCMPOPSTAC ",
-            icon);
+            "sample_lines");
         var brisanje = CreateSplitMenuCommand(
             "Brisanje poprecnih osa",
             "Brise poprecne ose preko tabele ili izbora na crtezu (TCMPOPBRISI).",
             "TCMPOPBRISI ",
-            "refresh");
+            "erase_sample_lines");
 
         split.Items.Add(dodavanje);
         split.Items.Add(brisanje);
@@ -573,12 +638,12 @@ internal static class RibbonBuilder
     /// </summary>
     private static RibbonSplitButton CreateAddTinLineSplitButton()
     {
-        const string icon = "osovina";
+        const string icon = "tin_line";
         var split = new RibbonSplitButton
         {
             Id = "TCM_ADD_TIN_LINE",
-            Text = "Add Line",
-            Description = "Forsira TIN ivicu — jedna linija ili neprekidni lanac (Civil Add Line).",
+            Text = "Dodaj liniju",
+            Description = "Forsira TIN ivicu — jedna linija ili neprekidni lanac.",
             ShowText = true,
             ShowImage = true,
             Size = RibbonItemSize.Large,
@@ -589,12 +654,12 @@ internal static class RibbonBuilder
         };
 
         var addLine = CreateSplitMenuCommand(
-            "Add Line",
+            "Dodaj liniju",
             "Jedna TIN ivica izmedju dva temena (ili duz linije).",
             "TCMTERADDLINE ",
             icon);
         var addContinuous = CreateSplitMenuCommand(
-            "Add Continuous Line",
+            "Neprekidna linija",
             "Neprekidni lanac TIN ivica — biraj temena redom, Enter = kraj lanca.",
             "TCMTERADDCLINE ",
             icon);
@@ -621,8 +686,8 @@ internal static class RibbonBuilder
 
         split.ToolTip = new RibbonToolTip
         {
-            Title = "Add Line",
-            Content = "Add Line / Add Continuous Line — forsira TIN ivice."
+            Title = "Dodaj liniju",
+            Content = "Dodaj liniju / Neprekidna linija — forsira TIN ivice."
         };
 
         return split;
@@ -633,7 +698,7 @@ internal static class RibbonBuilder
     /// </summary>
     private static RibbonSplitButton CreateContourSplitButton()
     {
-        const string icon = "tcm_draw_contours";
+        const string icon = "contours";
         var split = new RibbonSplitButton
         {
             Id = "TCM_TERRAIN_CONTOURS",
@@ -690,6 +755,67 @@ internal static class RibbonBuilder
     }
 
     /// <summary>
+    /// Geodetski raster: krstovi sa koordinatama ili DBPoint tačke u rasteru.
+    /// </summary>
+    private static RibbonSplitButton CreateSurveyGridSplitButton()
+    {
+        const string icon = "alignment_data";
+        var split = new RibbonSplitButton
+        {
+            Id = "TCM_SURVEY_GRID",
+            Text = "Geo raster",
+            Description = "Geodetski krstovi i tacke u koordinatnom rasteru.",
+            ShowText = true,
+            ShowImage = true,
+            Size = RibbonItemSize.Large,
+            Orientation = Orientation.Vertical,
+            IsSplit = true,
+            IsSynchronizedWithCurrentItem = false,
+            ListButtonStyle = Autodesk.Private.Windows.RibbonListButtonStyle.SplitButton
+        };
+
+        var crosses = CreateSplitMenuCommand(
+            "Geodetski krstovi",
+            "Crta i kotira geodetske krstove u WCS koordinatnom rasteru.",
+            "TCMGEOKRST ",
+            icon);
+        var points = CreateSplitMenuCommand(
+            "Tacke koordinatnog rastera",
+            "Crta DBPoint tacke u pravilnom WCS koordinatnom rasteru.",
+            "TCMKOORASTER ",
+            "spot_elev");
+
+        split.Items.Add(crosses);
+        split.Items.Add(new RibbonSeparator());
+        split.Items.Add(points);
+        split.Current = crosses;
+
+        var large = RibbonIconLoader.LoadNative($"{icon}_32")
+                    ?? RibbonIconLoader.LoadLarge(icon)
+                    ?? RibbonIconLoader.LoadLarge("spot_elev");
+        var small = RibbonIconLoader.LoadNative($"{icon}_16")
+                    ?? RibbonIconLoader.LoadSmall(icon)
+                    ?? large;
+        if (large is not null)
+        {
+            split.LargeImage = large;
+        }
+
+        if (small is not null)
+        {
+            split.Image = small;
+        }
+
+        split.ToolTip = new RibbonToolTip
+        {
+            Title = "Geo raster",
+            Content = "Geodetski krstovi / tacke koordinatnog rastera."
+        };
+
+        return split;
+    }
+
+    /// <summary>
     /// Civil Points stil: veliko dugme + padajuci meni (ikona tcm_add_terrain_points).
     /// </summary>
     private static RibbonSplitButton CreateTerrainPointsSplitButton()
@@ -724,6 +850,11 @@ internal static class RibbonBuilder
             "Jedan blok = sablon: atribut = Z, pa obelezavanje istih blokova kao tacke terena.",
             "TCMTERBLOK ",
             icon);
+        var krugUTacku = CreateSplitMenuCommand(
+            "Krug u tacku",
+            "Uzorak kruga + oblast: svi krugovi na istom lejeru postaju imenovana grupa tacaka terena.",
+            "TCMTERKRUGTAC ",
+            "krug_u_tacku");
         var ucitaj = CreateSplitMenuCommand(
             "Ucitaj tacke",
             "Ucitava XYZ CSV/TXT u ovaj crtez (folder projekta).",
@@ -743,6 +874,7 @@ internal static class RibbonBuilder
         split.Items.Add(izaberi);
         split.Items.Add(dodaj);
         split.Items.Add(dodajBlok);
+        split.Items.Add(krugUTacku);
         split.Items.Add(ucitaj);
         split.Items.Add(new RibbonSeparator());
         split.Items.Add(uredi);
@@ -878,15 +1010,15 @@ internal static class RibbonBuilder
 
     private static RibbonButton CreateCloseButton(string text, string description, ICommand handler)
     {
-        // ShowText=false: naslov panela je „Zatvori“ — bez duplog teksta ispod ikone.
+        // Mala ikona (Standard) — panel „Zatvori“; bez velikog 64px dugmeta.
         var button = new RibbonButton
         {
             Text = text,
             Description = description,
             ShowText = false,
             ShowImage = true,
-            Size = RibbonItemSize.Large,
-            Orientation = Orientation.Vertical,
+            Size = RibbonItemSize.Standard,
+            Orientation = Orientation.Horizontal,
             AllowInStatusBar = false,
             AllowInToolBar = true,
             Id = "TCM_CLOSE_TAB",
@@ -898,12 +1030,31 @@ internal static class RibbonBuilder
             }
         };
 
-        ApplyNativeSizedIcons(button, "tcm_close");
+        var small = RibbonIconLoader.LoadNative("close_16")
+                    ?? RibbonIconLoader.LoadNative("tcm_close_16")
+                    ?? RibbonIconLoader.LoadSmall("close")
+                    ?? RibbonIconLoader.LoadSmall("tcm_close");
+        var large = RibbonIconLoader.LoadNative("close_32")
+                    ?? RibbonIconLoader.LoadNative("tcm_close_32")
+                    ?? RibbonIconLoader.LoadLarge("close")
+                    ?? RibbonIconLoader.LoadLarge("tcm_close")
+                    ?? small;
+
+        if (small is not null)
+        {
+            button.Image = small;
+        }
+
+        if (large is not null)
+        {
+            button.LargeImage = large;
+        }
+
         return button;
     }
 
     /// <summary>
-    /// Hub TCM-INŽINJERING: RIBBONICONRESIZE=0 (lepe TCM ikone).
+    /// Hub TCM-ROADS: RIBBONICONRESIZE=0 (lepe TCM ikone).
     /// Bilo koji drugi tab (TCM moduli ili AutoCAD/CGSA): vrati 1.
     /// </summary>
     internal static void SyncRibbonIconResizeForActiveTab()
@@ -1229,7 +1380,7 @@ internal sealed class PlaceholderCommandHandler : ICommand
         {
             System.Windows.MessageBox.Show(
                 msg,
-                "TCM-INŽINJERING",
+                "TCM-ROADS",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Information);
         }

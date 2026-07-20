@@ -18,13 +18,13 @@ internal static class PluginUninstaller
         message = string.Empty;
 #if !BRICSCAD
         var answer = MessageBox.Show(
-            "Ovo ce potpuno obrisati TCM-INZINJERING iz AutoCAD/BricsCAD " +
+            "Ovo ce potpuno obrisati TCM-ROADS iz AutoCAD/BricsCAD " +
             "(bundle, registry, lokalna podesavanja)." + Environment.NewLine + Environment.NewLine +
             "Program ce zatraziti zatvaranje AutoCAD/BricsCAD-a " +
             "(imacete mogucnost da sacuvate crteze)." + Environment.NewLine +
             "Po zatvaranju, deinstalacija se nastavlja automatski." + Environment.NewLine + Environment.NewLine +
             "Nastaviti?",
-            "TCM-INZINJERING - Deinstalacija",
+            "TCM-ROADS - Deinstalacija",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);
@@ -88,7 +88,7 @@ $ErrorActionPreference = "Continue"
 $appName = "TcmInzenjering"
 $bundleName = "TcmInzenjering.bundle"
 $bricsBundleName = "TcmInzenjering.BricsCAD.bundle"
-$title = "TCM-INZINJERING - Deinstalacija"
+$title = "TCM-ROADS - Deinstalacija"
 $nl = [Environment]::NewLine
 $script:CancelWait = $false
 
@@ -161,7 +161,7 @@ $label.Dock = "Top"
 $label.Height = 36
 $label.ForeColor = [System.Drawing.Color]::White
 $label.BackColor = [System.Drawing.Color]::Transparent
-$label.Text = "Deinstalacija TCM-INZINJERING..."
+$label.Text = "Deinstalacija TCM-ROADS..."
 
 $status = New-Object System.Windows.Forms.Label
 $status.Dock = "Top"
@@ -310,7 +310,7 @@ function Remove-AppRegistry([string]$rootPath) {
 Remove-AppRegistry "HKCU:\Software\Autodesk\AutoCAD"
 Remove-AppRegistry "HKCU:\Software\Bricsys\BricsCAD"
 
-$msg = "TCM-INZINJERING je uklonjen."
+$msg = "TCM-ROADS je uklonjen."
 if ($removed.Count -gt 0) {
   $lines = ($removed | Select-Object -First 12 | ForEach-Object { " - $_" }) -join $nl
   $msg += $nl + $nl + "Obrisano:" + $nl + $lines

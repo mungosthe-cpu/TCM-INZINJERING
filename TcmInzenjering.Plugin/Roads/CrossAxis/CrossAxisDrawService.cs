@@ -14,6 +14,10 @@ public sealed class CrossAxisDrawParameters
     public int CounterStart { get; set; } = 1;
     public bool IncreasingNumbers { get; set; } = true;
     public string FixedName { get; set; } = string.Empty;
+    /// <summary>Ako je &gt; 0, koristi se umesto TextHeight iz metapodataka osovine.</summary>
+    public double TextHeightOverride { get; set; }
+    /// <summary>Opcioni font (npr. sa šablonske poprečne ose).</summary>
+    public string? FontFileNameOverride { get; set; }
 }
 
 internal static class CrossAxisDrawService
@@ -40,7 +44,8 @@ internal static class CrossAxisDrawService
         }
 
         station = Math.Max(axis.StartStation, Math.Min(station, axisEnd));
-        var options = metadata.ToLabelOptions();
+        ApplyStyleOverrides(parameters);
+        var options = ResolveLabelOptions(metadata, parameters);
 
         if (!parameters.AutoNaming)
         {
@@ -393,6 +398,8 @@ internal static class CrossAxisDrawService
                     meta.FixedName);
             }
         }
+
+        RoadEntityIndex.Invalidate();
     }
 
     private static void CollectAxisStationEntities(
@@ -1158,7 +1165,8 @@ internal static class CrossAxisDrawService
     {
         drawn = 0;
         error = null;
-        var options = metadata.ToLabelOptions();
+        ApplyStyleOverrides(parameters);
+        var options = ResolveLabelOptions(metadata, parameters);
 
         foreach (var station in stations.OrderBy(s => s))
         {
@@ -1176,7 +1184,9 @@ internal static class CrossAxisDrawService
                 Prefix = parameters.Prefix,
                 CounterStart = parameters.CounterStart,
                 IncreasingNumbers = parameters.IncreasingNumbers,
-                FixedName = parameters.FixedName
+                FixedName = parameters.FixedName,
+                TextHeightOverride = parameters.TextHeightOverride,
+                FontFileNameOverride = parameters.FontFileNameOverride
             };
 
             if (!parameters.AutoNaming)
@@ -1254,7 +1264,8 @@ internal static class CrossAxisDrawService
             CrossAxisStore.Save(tr, db, tick.Handle.Value, new CrossAxisPlacementSettings());
             CrossAxisMetaStore.Save(
                 tr, db, tick.Handle.Value, endStation, roadAxisName,
-                provisional, left, right, metadata.Prefix);
+                provisional, left, right, metadata.Prefix,
+                origin: CrossAxisOrigin.GeneratedEnd);
 
             SynchronizeNumbering(tr, db, roadAxisName, metadata, options);
             return true;
@@ -1314,6 +1325,7 @@ internal static class CrossAxisDrawService
         // Snapshot pre PurgeInvalid — inače se izgube stacionaže obrisanih tick-ova.
         var snapshot = CrossAxisMetaStore.LoadAllForRoadAxis(tr, db, roadAxisName)
             .Select(p => p.Meta)
+            .Where(meta => meta.Origin == CrossAxisOrigin.Manual)
             .OrderBy(m => m.Station)
             .ToList();
 
@@ -1390,7 +1402,7 @@ internal static class CrossAxisDrawService
 
                 CrossAxisMetaStore.Save(
                     tr, db, tick.Handle.Value, meta.Station, roadAxisName,
-                    number, left, right, meta.Prefix, meta.FixedName);
+                    number, left, right, meta.Prefix, meta.FixedName, meta.Origin);
             }
             catch
             {
@@ -1443,7 +1455,8 @@ internal static class CrossAxisDrawService
                 meta.LeftWidth > 1e-6 ? meta.LeftWidth : StationFontPreferences.CrossAxisLeftLength,
                 meta.RightWidth > 1e-6 ? meta.RightWidth : StationFontPreferences.CrossAxisRightLength,
                 meta.Prefix,
-                meta.FixedName);
+                meta.FixedName,
+                meta.Origin);
             return;
         }
     }
@@ -1560,6 +1573,38 @@ internal static class CrossAxisDrawService
         }
 
         return false;
+    }
+
+    private static void ApplyStyleOverrides(CrossAxisDrawParameters parameters)
+    {
+        if (string.IsNullOrWhiteSpace(parameters.FontFileNameOverride) &&
+            parameters.LeftWidth <= 1e-6 &&
+            parameters.RightWidth <= 1e-6)
+        {
+            return;
+        }
+
+        StationFontPreferences.Load();
+        var font = string.IsNullOrWhiteSpace(parameters.FontFileNameOverride)
+            ? StationFontPreferences.FontFileName
+            : parameters.FontFileNameOverride!.Trim();
+        var left = parameters.LeftWidth > 1e-6
+            ? parameters.LeftWidth
+            : StationFontPreferences.CrossAxisLeftLength;
+        var right = parameters.RightWidth > 1e-6
+            ? parameters.RightWidth
+            : StationFontPreferences.CrossAxisRightLength;
+        StationFontPreferences.Save(font, left, right);
+    }
+
+    private static StationLabelOptions ResolveLabelOptions(
+        RoadAxisMetadata metadata,
+        CrossAxisDrawParameters parameters)
+    {
+        var options = metadata.ToLabelOptions();
+        return parameters.TextHeightOverride > 1e-6
+            ? options.WithTextHeight(parameters.TextHeightOverride)
+            : options;
     }
 
     private static Point3d GetEntityPosition(Entity entity) =>

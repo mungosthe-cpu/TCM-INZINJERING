@@ -108,28 +108,28 @@ public partial class ProfileTableTypeDialog : Window
         var name = (NameBox.Text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name))
         {
-            MessageBox.Show(this, "Unesite naziv tipa tabele.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Unesite naziv tipa tabele.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
 
         if (!TryParse(LabelWidthBox.Text, out var labelW) || labelW < 5)
         {
-            MessageBox.Show(this, "Sirina kolone naziva mora biti ≥ 5.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Sirina kolone naziva mora biti ≥ 5.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
 
         if (!TryParse(DefaultHeightBox.Text, out var defH) || defH < 1)
         {
-            MessageBox.Show(this, "Podrazumevana visina rubrike mora biti ≥ 1.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Podrazumevana visina rubrike mora biti ≥ 1.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
 
         if (_bands.Count == 0)
         {
-            MessageBox.Show(this, "Dodajte bar jednu rubriku.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Dodajte bar jednu rubriku.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
@@ -168,7 +168,7 @@ public partial class ProfileTableTypeDialog : Window
             if (string.Equals(list[idx].Name, "TCM_1", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(edited.Name, "TCM_1", StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show(this, "Ne mozete preimenovati ugradjeni tip TCM_1.", "TCM-INŽINJERING",
+                MessageBox.Show(this, "Ne mozete preimenovati ugradjeni tip TCM_1.", "TCM-ROADS",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -236,12 +236,12 @@ public partial class ProfileTableTypeDialog : Window
 
         if (string.Equals(name, "TCM_1", StringComparison.OrdinalIgnoreCase))
         {
-            MessageBox.Show(this, "Ugradjeni tip TCM_1 ne moze da se obrise.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Ugradjeni tip TCM_1 ne moze da se obrise.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        if (MessageBox.Show(this, $"Obrisati tip '{name}'?", "TCM-INŽINJERING",
+        if (MessageBox.Show(this, $"Obrisati tip '{name}'?", "TCM-ROADS",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
         {
             return;
@@ -305,7 +305,7 @@ public partial class ProfileTableTypeDialog : Window
         }
 
         PersistCurrentList(type);
-        MessageBox.Show(this, $"Tip '{type.Name}' je snimljen.", "TCM-INŽINJERING",
+        MessageBox.Show(this, $"Tip '{type.Name}' je snimljen.", "TCM-ROADS",
             MessageBoxButton.OK, MessageBoxImage.Information);
     }
 

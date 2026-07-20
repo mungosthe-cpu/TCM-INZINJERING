@@ -135,7 +135,7 @@ public sealed partial class RoadCommands
                 if (writeMessage)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema TCM 3DFACE terena" +
+                        "\nTCM-ROADS: Nema TCM 3DFACE terena" +
                         (string.IsNullOrWhiteSpace(surfaceName) ? "." : $" za „{surfaceName}“.") +
                         " Prvo TCMTERFACE.");
                 }
@@ -256,7 +256,7 @@ public sealed partial class RoadCommands
                     analysis.FacesColored == 0)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Izohipse isključene (Display)" +
+                        "\nTCM-ROADS: Izohipse isključene (Display)" +
                         (erased > 0 ? $", obrisano {erased}" : string.Empty) +
                         $", 3DFACE {(triangleComp.Visible ? "prikazani" : "sakriveni")}.");
                 }
@@ -264,13 +264,13 @@ public sealed partial class RoadCommands
                          analysis.FacesColored == 0)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema kontura u opsegu elevacija" +
+                        "\nTCM-ROADS: Nema kontura u opsegu elevacija" +
                         (erased > 0 ? $" (obrisano starih {erased})" : string.Empty) + ".");
                 }
                 else
                 {
                     ed.WriteMessage(
-                        $"\nTCM-INZINJERING: Izohipse — {minorCount} minor + {majorCount} major" +
+                        $"\nTCM-ROADS: Izohipse — {minorCount} minor + {majorCount} major" +
                         (userCount > 0 ? $" + {userCount} user" : string.Empty) +
                         $" (interval {minor:0.###}/{major:0.###}, baza {baseElev:0.###}" +
                         (style.SmoothContours
@@ -288,7 +288,7 @@ public sealed partial class RoadCommands
         {
             if (writeMessage)
             {
-                ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+                ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
             }
 
             return false;
@@ -540,7 +540,7 @@ public sealed partial class RoadCommands
 
                     if (!TryGetContourElevation(entity, out var elevation, out var insertAt))
                     {
-                        ed.WriteMessage("\nTCM-INZINJERING: Objekat nije TCM izohipsa.");
+                        ed.WriteMessage("\nTCM-ROADS: Objekat nije TCM izohipsa.");
                         tr.Commit();
                         tr = null;
                         continue;
@@ -613,7 +613,7 @@ public sealed partial class RoadCommands
 
                     labeled++;
                     ed.WriteMessage(
-                        $"\nTCM-INZINJERING: Kotna oznaka {elevText}" +
+                        $"\nTCM-ROADS: Kotna oznaka {elevText}" +
                         (string.IsNullOrWhiteSpace(surfaceName) ? "." : $" ({surfaceName})."));
                 }
                 catch (System.Exception ex)
@@ -628,7 +628,7 @@ public sealed partial class RoadCommands
                     }
 
                     tr = null;
-                    ed.WriteMessage($"\nTCM-INZINJERING greska (kotna oznaka): {ex.Message}");
+                    ed.WriteMessage($"\nTCM-ROADS greska (kotna oznaka): {ex.Message}");
                 }
                 finally
                 {
@@ -645,12 +645,12 @@ public sealed partial class RoadCommands
 
             if (labeled > 0)
             {
-                ed.WriteMessage($"\nTCM-INZINJERING: Ukupno kotnih oznaka: {labeled}.");
+                ed.WriteMessage($"\nTCM-ROADS: Ukupno kotnih oznaka: {labeled}.");
             }
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -679,7 +679,7 @@ public sealed partial class RoadCommands
             if (mesh.TriangleCount == 0)
             {
                 ed.WriteMessage(
-                    "\nTCM-INZINJERING: Nema TCM 3DFACE terena. Prvo TCMTERFACE.");
+                    "\nTCM-ROADS: Nema TCM 3DFACE terena. Prvo TCMTERFACE.");
                 return;
             }
 
@@ -700,7 +700,7 @@ public sealed partial class RoadCommands
                 if (!mesh.TryGetElevation(pick.Value.X, pick.Value.Y, out var z))
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Tacka nije na terenu (van TIN XY).");
+                        "\nTCM-ROADS: Tacka nije na terenu (van TIN XY).");
                     continue;
                 }
 
@@ -732,17 +732,17 @@ public sealed partial class RoadCommands
                 TerrainContourXData.AttachSpot(text, z, surfaceName);
                 tr.Commit();
                 placed++;
-                ed.WriteMessage($"\nTCM-INZINJERING: Spot Z = {z:0.00}.");
+                ed.WriteMessage($"\nTCM-ROADS: Spot Z = {z:0.00}.");
             }
 
             if (placed > 0)
             {
-                ed.WriteMessage($"\nTCM-INZINJERING: Ukupno spot oznaka: {placed}.");
+                ed.WriteMessage($"\nTCM-ROADS: Ukupno spot oznaka: {placed}.");
             }
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 

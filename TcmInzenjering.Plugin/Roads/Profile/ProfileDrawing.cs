@@ -15,6 +15,7 @@ internal static class ProfileDrawing
     public const string LayerCrossGrid = "TCM_POP_MREZA";
     public const string LayerVertical = "TCM_POD_VERT";
     public const string LayerTerrain = "TCM_POD_TEREN";
+    public const string LayerGrade = "TCM_POD_NIVELETA";
     public const string LayerText = "TCM_POD_TEKST";
 
     public static void EnsureLayers(Transaction tr, Database db)
@@ -24,15 +25,17 @@ internal static class ProfileDrawing
         EnsureLayer(tr, db, LayerCrossGrid, 8);
         EnsureLayer(tr, db, LayerVertical, 5);
         EnsureLayer(tr, db, LayerTerrain, 3);
+        EnsureLayer(tr, db, LayerGrade, 1);
         EnsureLayer(tr, db, LayerText, 7);
     }
 
-    /// <summary>Crta tabelu + mrežu + teren (kompletan Profile View).</summary>
+    /// <summary>Crta tabelu + mrežu + teren (+ niveleta ako postoji).</summary>
     public static void DrawFullProfile(
         Transaction tr,
         BlockTableRecord modelSpace,
         ProfileViewData view,
-        IReadOnlyList<(double Station, double Elevation)> terrainSamples)
+        IReadOnlyList<(double Station, double Elevation)> terrainSamples,
+        bool drawTerrain = true)
     {
         EnsureLayers(tr, modelSpace.Database);
         RoadDrawing.EnsureRegApp(tr, modelSpace.Database);
@@ -89,7 +92,55 @@ internal static class ProfileDrawing
         DrawElevationGrid(tr, modelSpace, view, xData, xRight, yGraphBot, yGraphTop, elevLabelX);
         DrawStationColumns(tr, modelSpace, view, terrainSamples, y0, yGraphTop);
         DrawMainElementsBands(tr, modelSpace, view);
-        DrawTerrainPolyline(tr, modelSpace, view, terrainSamples);
+        if (drawTerrain)
+        {
+            DrawTerrainPolyline(tr, modelSpace, view, terrainSamples);
+        }
+
+        if (ProfileGradeSampler.TryLoadSamples(tr, modelSpace.Database, view.AxisName, out var gradeSamples) &&
+            gradeSamples.Count >= 2)
+        {
+            DrawGradePolyline(tr, modelSpace, view, gradeSamples);
+        }
+    }
+
+    public static ObjectId DrawGradePolyline(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        ProfileViewData view,
+        IReadOnlyList<(double Station, double Elevation)> samples)
+    {
+        EnsureLayers(tr, modelSpace.Database);
+        if (samples.Count < 2)
+        {
+            return ObjectId.Null;
+        }
+
+        var filtered = samples
+            .Where(s => s.Station >= view.StartStation - 1e-6 && s.Station <= view.EndStation + 1e-6)
+            .ToList();
+        if (filtered.Count < 2)
+        {
+            filtered = samples.ToList();
+        }
+
+        var pl = new Polyline(filtered.Count)
+        {
+            Layer = LayerGrade,
+            Color = AcColor.FromColorIndex(ColorMethod.ByAci, 1),
+            Elevation = 0
+        };
+
+        for (var i = 0; i < filtered.Count; i++)
+        {
+            var p = view.ToProfilePoint(filtered[i].Station, filtered[i].Elevation);
+            pl.AddVertexAt(i, new Point2d(p.X, p.Y), 0, 0, 0);
+        }
+
+        modelSpace.AppendEntity(pl);
+        tr.AddNewlyCreatedDBObject(pl, true);
+        ProfileXData.AttachGrade(pl, view.ProfileId);
+        return pl.ObjectId;
     }
 
     public static ObjectId DrawTerrainPolyline(
@@ -315,7 +366,8 @@ internal static class ProfileDrawing
                         break;
 
                     case ProfileBandKind.LaneWidths:
-                        if (ProfileLaneWidthStore.TryGetAtStation(view.AxisName, s, out var leftW, out var rightW))
+                        if (ProfileLaneWidthStore.TryGetAtStation(
+                                tr, ms.Database, view.AxisName, s, out var leftW, out var rightW))
                         {
                             AppendRotatedText(tr, ms, view,
                                 new Point3d(x, cy, 0),

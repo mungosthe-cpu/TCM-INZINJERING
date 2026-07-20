@@ -91,7 +91,7 @@ public partial class ProjectFolderDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Ne mogu da pristupim folderu:\n{ex.Message}", "TCM-INŽINJERING",
+            MessageBox.Show(this, $"Ne mogu da pristupim folderu:\n{ex.Message}", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -106,7 +106,7 @@ public partial class ProjectFolderDialog : Window
         {
             if (name.Contains(c))
             {
-                MessageBox.Show(this, "Ime foldera sadrzi nedozvoljene karaktere.", "TCM-INŽINJERING",
+                MessageBox.Show(this, "Ime foldera sadrzi nedozvoljene karaktere.", "TCM-ROADS",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -120,7 +120,7 @@ public partial class ProjectFolderDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Ne mogu da napravim folder:\n{ex.Message}", "TCM-INŽINJERING",
+            MessageBox.Show(this, $"Ne mogu da napravim folder:\n{ex.Message}", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -192,7 +192,7 @@ public partial class ProjectFolderDialog : Window
         var path = PathBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(path))
         {
-            MessageBox.Show(this, "Unesite putanju foldera.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Unesite putanju foldera.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -203,7 +203,7 @@ public partial class ProjectFolderDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Ne mogu da koristim folder:\n{ex.Message}", "TCM-INŽINJERING",
+            MessageBox.Show(this, $"Ne mogu da koristim folder:\n{ex.Message}", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }

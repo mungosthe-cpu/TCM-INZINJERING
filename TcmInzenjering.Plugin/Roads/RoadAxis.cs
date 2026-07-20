@@ -4,7 +4,7 @@ namespace TcmInzenjering.Plugin.Roads;
 
 internal sealed class RoadAxis
 {
-    public string Name { get; init; } = "OS-1";
+    public string Name { get; init; } = "OSA-1";
     public double StartStation { get; init; }
     public IReadOnlyList<AlignmentElement> Elements { get; init; } = Array.Empty<AlignmentElement>();
 

@@ -15,9 +15,12 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         var silent = args.Any(a => string.Equals(a, "--silent", StringComparison.OrdinalIgnoreCase));
+        // --auto: UI + automatski nastavak posle zatvaranja CAD-a + auto-zatvaranje na uspeh.
+        var auto = args.Any(a => string.Equals(a, "--auto", StringComparison.OrdinalIgnoreCase));
+        var showUi = !silent || auto;
 
         using var form = new InstallerForm();
-        if (!silent)
+        if (showUi)
         {
             form.Show();
             Application.DoEvents();
@@ -25,7 +28,7 @@ internal static class Program
 
         try
         {
-            form.SetStatus($"TCM-INŽINJERING v{GetInstallerVersion()} — priprema…");
+            form.SetStatus($"TCM-ROADS v{GetInstallerVersion()} — priprema…");
             form.SetProgress(5);
 
             WaitForCadHostsIfNeeded(form);
@@ -68,26 +71,56 @@ internal static class Program
                 "Instalacija završena. Restartujte AutoCAD/BricsCAD.\n" +
                 "Komanda za proveru: TCMUPDATE";
 
-            if (silent)
+            if (silent && !auto)
             {
                 return 0;
             }
 
             form.Complete(true, okMsg);
+            if (auto)
+            {
+                // Bez dodatnog klika — prikaži uspeh pa zatvori.
+                AutoCloseAfter(form, TimeSpan.FromSeconds(4));
+            }
+
             Application.Run(form);
             return 0;
         }
         catch (Exception ex)
         {
-            if (silent)
+            if (silent && !auto)
             {
                 return 1;
             }
 
             form.Complete(false, $"Greška: {ex.Message}");
+            if (auto)
+            {
+                AutoCloseAfter(form, TimeSpan.FromSeconds(8));
+            }
+
             Application.Run(form);
             return 1;
         }
+    }
+
+    private static void AutoCloseAfter(InstallerForm form, TimeSpan delay)
+    {
+        var timer = new System.Windows.Forms.Timer { Interval = (int)delay.TotalMilliseconds };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            timer.Dispose();
+            try
+            {
+                form.Close();
+            }
+            catch
+            {
+                // ignore
+            }
+        };
+        timer.Start();
     }
 
     private static void InstallBundle(
@@ -218,19 +251,19 @@ internal static class Program
         }
 
         form.SetStatus(
-            "AutoCAD/BricsCAD je otvoren — instalacija čeka da ga zatvorite. " +
-            "Možete nastaviti rad; kad zatvorite program, kopiranje će početi samo.");
+            "AutoCAD/BricsCAD je otvoren — čekam zatvaranje. " +
+            "Nastavite rad; čim zatvorite program, instalacija kreće sama (bez klika).");
         form.SetProgress(8);
 
         while (CadRunning())
         {
             Application.DoEvents();
-            Thread.Sleep(1500);
+            Thread.Sleep(800);
         }
 
         // DLL handle se oslobađa kratko posle zatvaranja procesa.
-        Thread.Sleep(2000);
-        form.SetStatus("CAD program zatvoren — nastavljam instalaciju…");
+        Thread.Sleep(1500);
+        form.SetStatus("CAD program zatvoren — automatski nastavljam instalaciju…");
     }
 
     private static string ResolvePayloadRoot()

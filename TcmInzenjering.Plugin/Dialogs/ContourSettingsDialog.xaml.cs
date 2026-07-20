@@ -150,7 +150,7 @@ public partial class ContourSettingsDialog : Window
             {
                 if (!quiet)
                 {
-                    MessageBox.Show(this, error, "TCM-INŽINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(this, error, "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
 
                 return;

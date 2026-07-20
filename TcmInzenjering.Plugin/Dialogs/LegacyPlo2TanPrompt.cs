@@ -6,9 +6,16 @@ namespace TcmInzenjering.Plugin.Dialogs;
 
 internal static class LegacyPlo2TanPrompt
 {
-    public static bool TryCollect(Editor ed, double axisLength, out string axisName, out double curveRadius, out double textHeight, out StationLabelOptions stationOptions)
+    public static bool TryCollect(
+        Editor ed,
+        double axisLength,
+        out string axisName,
+        out double curveRadius,
+        out double textHeight,
+        out StationLabelOptions stationOptions,
+        string suggestedAxisName = "OSA-1")
     {
-        axisName = "OS-1";
+        axisName = string.IsNullOrWhiteSpace(suggestedAxisName) ? "OSA-1" : suggestedAxisName.Trim();
         curveRadius = 50;
         textHeight = 2.5;
         stationOptions = new StationLabelOptions
@@ -26,7 +33,7 @@ internal static class LegacyPlo2TanPrompt
             AxisCounterStart = 1
         };
 
-        var nameResult = ed.GetString("\nIme osovine [OS-1]: ");
+        var nameResult = ed.GetString($"\nIme osovine [{axisName}]: ");
         if (nameResult.Status == PromptStatus.Cancel)
         {
             return false;

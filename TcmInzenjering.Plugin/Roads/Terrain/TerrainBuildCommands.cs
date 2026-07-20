@@ -83,7 +83,216 @@ public sealed partial class RoadCommands
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Uzorak kruga + oblast: svi krugovi na istom lejeru unutar oblasti
+    /// postaju tacke terena (XYZ centra) i snimaju se u imenovanu grupu.
+    /// </summary>
+    [CommandMethod("TCMTERKRUGTAC", CommandFlags.Modal)]
+    public void ConvertCirclesToTerrainPoints()
+    {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
+        var ed = doc.Editor;
+        var db = doc.Database;
+        try
+        {
+            var sampleOptions = new PromptEntityOptions(
+                "\nIzaberite jedan krug kao uzorak (traze se krugovi na istom lejeru): ")
+            {
+                AllowNone = false
+            };
+            sampleOptions.SetRejectMessage("\nPotreban je CIRCLE objekat.");
+            sampleOptions.AddAllowedClass(typeof(Circle), exactMatch: true);
+            var sampleResult = ed.GetEntity(sampleOptions);
+            if (sampleResult.Status != PromptStatus.OK)
+            {
+                return;
+            }
+
+            string sourceLayer;
+            using (var sampleTr = db.TransactionManager.StartTransaction())
+            {
+                if (sampleTr.GetObject(sampleResult.ObjectId, OpenMode.ForRead) is not Circle sample ||
+                    sample.IsErased)
+                {
+                    ed.WriteMessage("\nTCM-ROADS: Izabrani krug nije validan.");
+                    sampleTr.Commit();
+                    return;
+                }
+
+                sourceLayer = sample.Layer;
+                sampleTr.Commit();
+            }
+
+            var first = ed.GetPoint(
+                $"\nPrvi ugao oblasti za krugove sa lejera „{sourceLayer}“: ");
+            if (first.Status != PromptStatus.OK)
+            {
+                return;
+            }
+
+            var second = ed.GetCorner(new PromptCornerOptions(
+                "\nSuprotni ugao oblasti: ", first.Value));
+            if (second.Status != PromptStatus.OK)
+            {
+                return;
+            }
+
+            var filter = new SelectionFilter(
+            [
+                new TypedValue((int)DxfCode.Start, "CIRCLE"),
+                new TypedValue((int)DxfCode.LayerName, sourceLayer)
+            ]);
+            var selection = ed.SelectCrossingWindow(first.Value, second.Value, filter);
+            if (selection.Status != PromptStatus.OK ||
+                selection.Value is null ||
+                selection.Value.Count == 0)
+            {
+                ed.WriteMessage(
+                    $"\nTCM-ROADS: U oblasti nema krugova na lejeru „{sourceLayer}“.");
+                return;
+            }
+
+            var converted = 0;
+            var added = 0;
+            var total = 0;
+            var hadFaces = false;
+            string? activeSurface = null;
+            var groupName = string.Empty;
+            var groupPoints = new List<Point3d>();
+            using (var tr = db.TransactionManager.StartTransaction())
+            {
+                var collected = new List<TerrainPointVm>();
+                var circles = new List<Circle>();
+                foreach (SelectedObject selected in selection.Value)
+                {
+                    if (selected is null ||
+                        tr.GetObject(selected.ObjectId, OpenMode.ForWrite) is not Circle circle ||
+                        circle.IsErased)
+                    {
+                        continue;
+                    }
+
+                    var center = circle.Center;
+                    collected.Add(new TerrainPointVm(
+                        center.X, center.Y, center.Z, isAdded: true));
+                    if (!groupPoints.Any(p =>
+                            Math.Abs(p.X - center.X) <= 1e-8 &&
+                            Math.Abs(p.Y - center.Y) <= 1e-8))
+                    {
+                        groupPoints.Add(center);
+                    }
+                    circles.Add(circle);
+                }
+
+                if (collected.Count == 0)
+                {
+                    ed.WriteMessage("\nTCM-ROADS: Nije pronadjen nijedan validan krug.");
+                    tr.Commit();
+                    return;
+                }
+
+                var working = LoadStoredAsVm(tr, db);
+                var before = working.Count;
+                MergeCollected(working, collected);
+                PersistAndSyncPoints(tr, db, working, eraseHandles: null);
+
+                groupName = TerrainPointGroupStore.GetNextDefaultName(tr, db);
+                TerrainPointGroupStore.Save(tr, db, groupName, groupPoints);
+
+                activeSurface = NamedTerrainSurfaceStore.GetActiveName(tr, db);
+                if (!string.IsNullOrWhiteSpace(activeSurface))
+                {
+                    NamedTerrainSurfaceStore.SaveSurface(
+                        tr, db, activeSurface, working.Select(p => p.ToPoint3d()).ToList());
+                }
+
+                // Brisanje je deo iste AutoCAD transakcije, pa standardni UNDO vraca
+                // i krugove i prethodno stanje tacaka.
+                foreach (var circle in circles)
+                {
+                    circle.Erase();
+                    converted++;
+                }
+
+                added = Math.Max(0, working.Count - before);
+                total = working.Count;
+                hadFaces = CountTerrainFaces(tr, db) > 0;
+                tr.Commit();
+            }
+
+            ed.WriteMessage(
+                $"\nTCM-ROADS: Pretvoreno {converted} krugova u tacke terena " +
+                $"(novih {added}, ukupno {total}). XYZ je preuzet iz centra svakog kruga.");
+
+            if (total >= 3 && (hadFaces || !string.IsNullOrWhiteSpace(activeSurface)))
+            {
+                RebuildTerrainFaces(ed, db, announce: true, activeSurface);
+            }
+
+            ed.Regen();
+
+#if !BRICSCAD
+            var report = new CirclePointConversionSummaryDialog(
+                sourceLayer, groupName, groupPoints, converted, added);
+            if (AcApp.ShowModalWindow(report) == true && report.SaveRequested)
+            {
+                var saveName = report.GroupName;
+                if (!string.Equals(saveName, groupName, StringComparison.OrdinalIgnoreCase))
+                {
+                    using var renameTr = db.TransactionManager.StartTransaction();
+                    TerrainPointGroupStore.Rename(
+                        renameTr, db, groupName, saveName, groupPoints);
+                    renameTr.Commit();
+                    groupName = saveName;
+                }
+
+                // Tacke su vec u crtezu; ovde snimamo imenovani skup + projekat
+                // (bez zamene celog TerrainPointStore samo grupom).
+                string saveResult;
+                try
+                {
+                    var normalized = NamedTerrainSurfaceStore.NormalizeName(saveName);
+                    using (var saveTr = db.TransactionManager.StartTransaction())
+                    {
+                        NamedTerrainSurfaceStore.SaveSurface(
+                            saveTr, db, normalized, groupPoints, setActive: true);
+                        saveTr.Commit();
+                    }
+
+                    var projectError = TcmProjectStore.AddPointSetToActiveProject(normalized);
+                    saveResult = projectError is null
+                        ? $"Skup tacaka „{normalized}“ snimljen u crtez i aktivni TCM projekat " +
+                          $"({groupPoints.Count} tacaka)."
+                        : "ERR:" + projectError;
+                }
+                catch (System.Exception ex)
+                {
+                    saveResult = "ERR:" + ex.Message;
+                }
+
+                if (saveResult.StartsWith("ERR:", StringComparison.Ordinal))
+                {
+                    ed.WriteMessage($"\nTCM-ROADS: {saveResult[4..].Trim()}");
+                }
+                else
+                {
+                    ed.WriteMessage($"\nTCM-ROADS: {saveResult}");
+                }
+            }
+#endif
+        }
+        catch (System.Exception ex)
+        {
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -108,7 +317,7 @@ public sealed partial class RoadCommands
         {
             if (tr.GetObject(per.ObjectId, OpenMode.ForRead) is not BlockReference sample || sample.IsErased)
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Nije izabran validan blok.");
+                ed.WriteMessage("\nTCM-ROADS: Nije izabran validan blok.");
                 tr.Commit();
                 return;
             }
@@ -121,7 +330,7 @@ public sealed partial class RoadCommands
         if (attrs.Count == 0)
         {
             ed.WriteMessage(
-                $"\nTCM-INZINJERING: Blok „{blockName}“ nema atribute. Potreban je atribut sa visinom.");
+                $"\nTCM-ROADS: Blok „{blockName}“ nema atribute. Potreban je atribut sa visinom.");
             return;
         }
 
@@ -142,9 +351,10 @@ public sealed partial class RoadCommands
             XySource = TerrainBlockXySource.BlockInsertion
         };
 #endif
+        TerrainPointBlockPreferences.Save(mapping);
 
         ed.WriteMessage(
-            $"\nTCM-INZINJERING: Obeležite instance bloka „{mapping.BlockName}“ " +
+            $"\nTCM-ROADS: Obeležite instance bloka „{mapping.BlockName}“ " +
             $"(Z = atribut {mapping.ElevationAttributeTag}).");
 
         var filter = new SelectionFilter(
@@ -166,7 +376,7 @@ public sealed partial class RoadCommands
             sel = ed.GetSelection(selOpts);
             if (sel.Status != PromptStatus.OK || sel.Value is null || sel.Value.Count == 0)
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Nista nije izabrano.");
+                ed.WriteMessage("\nTCM-ROADS: Nista nije izabrano.");
                 return;
             }
         }
@@ -204,7 +414,7 @@ public sealed partial class RoadCommands
             if (collected.Count == 0)
             {
                 ed.WriteMessage(
-                    "\nTCM-INZINJERING: Nijedna tacka nije izvucena iz blokova" +
+                    "\nTCM-ROADS: Nijedna tacka nije izvucena iz blokova" +
                     (skipped > 0 ? $" (preskoceno {skipped} bez validnog Z)." : "."));
                 tr.Commit();
                 return;
@@ -217,7 +427,7 @@ public sealed partial class RoadCommands
             tr.Commit();
 
             ed.WriteMessage(
-                $"\nTCM-INZINJERING: Dodato {collected.Count} tacaka iz bloka „{mapping.BlockName}“" +
+                $"\nTCM-ROADS: Dodato {collected.Count} tacaka iz bloka „{mapping.BlockName}“" +
                 (skipped > 0 ? $" (preskočeno {skipped})." : ".") +
                 $" Ukupno u skupu: {working.Count}.");
 
@@ -411,7 +621,7 @@ public sealed partial class RoadCommands
             var collected = CollectTerrainPointsWithIds(ed, db, requireThreeNew: !append);
             if (collected.Count == 0)
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Nije izabrana nijedna tacka.");
+                ed.WriteMessage("\nTCM-ROADS: Nije izabrana nijedna tacka.");
                 return;
             }
 
@@ -442,7 +652,7 @@ public sealed partial class RoadCommands
                 if (working.Count < 3)
                 {
                     ed.WriteMessage(
-                        $"\nTCM-INZINJERING: Potrebne su najmanje 3 tacke (ukupno {working.Count}).");
+                        $"\nTCM-ROADS: Potrebne su najmanje 3 tacke (ukupno {working.Count}).");
                     tr.Commit();
                     return;
                 }
@@ -453,7 +663,7 @@ public sealed partial class RoadCommands
             }
 
             ed.WriteMessage(
-                $"\nTCM-INZINJERING: Sacuvano {working.Count} tacaka za teren" +
+                $"\nTCM-ROADS: Sacuvano {working.Count} tacaka za teren" +
                 (append ? " (dodato u postojeci skup)." : "."));
 
             var rebuiltTin = false;
@@ -472,7 +682,7 @@ public sealed partial class RoadCommands
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -490,11 +700,60 @@ public sealed partial class RoadCommands
         if (working.Count == 0)
         {
             ed.WriteMessage(
-                "\nTCM-INZINJERING: Nema sacuvanih tacaka. Koristite Izaberi tacke / Dodaj tacke / Ucitaj tacke.");
+                "\nTCM-ROADS: Nema sacuvanih tacaka. Koristite Izaberi tacke / Dodaj tacke / Ucitaj tacke.");
             return;
         }
 
         ShowTerrainPointsSummary(working, appendMode: true, rebuiltTin: hadFaces);
+    }
+
+    /// <summary>Otvara editor tačaka za imenovani skup (iz prozora Projekat).</summary>
+    internal static void OpenNamedTerrainPointsEditor(string surfaceName, System.Windows.Window? owner = null)
+    {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc is null)
+        {
+            return;
+        }
+
+#if BRICSCAD
+        doc.Editor.WriteMessage("\nTCM-ROADS: Uredjivanje tacaka zahteva WPF dijalog (AutoCAD).");
+        return;
+#else
+        List<TerrainPointVm> working;
+        var hadFaces = false;
+        using (var tr = doc.Database.TransactionManager.StartTransaction())
+        {
+            if (!NamedTerrainSurfaceStore.ActivateSurface(tr, doc.Database, surfaceName, out var pts) ||
+                pts.Count == 0)
+            {
+                tr.Commit();
+                System.Windows.MessageBox.Show(
+                    owner,
+                    $"Skup tacaka „{surfaceName}“ nije pronadjen ili je prazan.",
+                    "TCM-ROADS",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
+            working = pts.Select(p =>
+            {
+                var handle = FindDbPointHandle(tr, doc.Database, p);
+                return new TerrainPointVm(p.X, p.Y, p.Z, handle, isAdded: false);
+            }).ToList();
+            PersistAndSyncPoints(tr, doc.Database, working, eraseHandles: null);
+            hadFaces = CountTerrainFaces(tr, doc.Database) > 0;
+            tr.Commit();
+        }
+
+        ShowTerrainPointsSummary(
+            working,
+            appendMode: true,
+            rebuiltTin: hadFaces,
+            statusHint: $"Skup tacaka: {surfaceName}",
+            namedSurfaceName: surfaceName);
+#endif
     }
 
     private static void LoadTerrainPointsFromFileUi(Editor ed, Database db)
@@ -524,13 +783,13 @@ public sealed partial class RoadCommands
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING: Ne mogu da ucitam fajl: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS: Ne mogu da ucitam fajl: {ex.Message}");
             return;
         }
 
         if (loaded.Count == 0)
         {
-            ed.WriteMessage("\nTCM-INZINJERING: Fajl ne sadrzi validne X,Y,Z tacke.");
+            ed.WriteMessage("\nTCM-ROADS: Fajl ne sadrzi validne X,Y,Z tacke.");
             return;
         }
 
@@ -577,10 +836,10 @@ public sealed partial class RoadCommands
             tr.Commit();
         }
 
-        ed.WriteMessage($"\nTCM-INZINJERING: Ucitano {working.Count} tacaka. Zatim TCMTERFACE za TIN.");
+        ed.WriteMessage($"\nTCM-ROADS: Ucitano {working.Count} tacaka. Zatim TCMTERFACE za TIN.");
         ShowTerrainPointsSummary(working, appendMode: true, rebuiltTin: false);
 #else
-        ed.WriteMessage("\nTCM-INZINJERING: Ucitavanje fajla nije dostupno u ovoj konfiguraciji.");
+        ed.WriteMessage("\nTCM-ROADS: Ucitavanje fajla nije dostupno u ovoj konfiguraciji.");
 #endif
     }
 
@@ -595,7 +854,7 @@ public sealed partial class RoadCommands
 
         if (rows.Count == 0)
         {
-            ed.WriteMessage("\nTCM-INZINJERING: Nema tacaka za snimanje.");
+            ed.WriteMessage("\nTCM-ROADS: Nema tacaka za snimanje.");
             return;
         }
 
@@ -603,12 +862,12 @@ public sealed partial class RoadCommands
         {
             var path = ExportTerrainPointsToProject(rows);
             ed.WriteMessage(path is null
-                ? "\nTCM-INZINJERING: Nema tacaka za snimanje."
-                : $"\nTCM-INZINJERING: Tacke snimljene:\n{path}");
+                ? "\nTCM-ROADS: Nema tacaka za snimanje."
+                : $"\nTCM-ROADS: Tacke snimljene:\n{path}");
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING: Greska pri snimanju: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS: Greska pri snimanju: {ex.Message}");
         }
     }
 
@@ -616,7 +875,8 @@ public sealed partial class RoadCommands
         IReadOnlyList<TerrainPointVm> points,
         bool appendMode,
         bool rebuiltTin,
-        string? statusHint = null)
+        string? statusHint = null,
+        string? namedSurfaceName = null)
     {
 #if !BRICSCAD
         var doc = AcApp.DocumentManager.MdiActiveDocument;
@@ -636,6 +896,14 @@ public sealed partial class RoadCommands
                     {
                         using var tr = doc.Database.TransactionManager.StartTransaction();
                         PersistAndSyncPoints(tr, doc.Database, rows, eraseHandles);
+                        if (!string.IsNullOrWhiteSpace(namedSurfaceName))
+                        {
+                            NamedTerrainSurfaceStore.SaveSurface(
+                                tr, doc.Database, namedSurfaceName,
+                                rows.Select(r => r.ToPoint3d()).ToList(),
+                                setActive: true);
+                        }
+
                         tr.Commit();
                     }),
                 buildTerrain: (rows, eraseHandles, terrainName) =>
@@ -649,11 +917,23 @@ public sealed partial class RoadCommands
 
                         RebuildTerrainFaces(doc.Editor, doc.Database, announce: true, terrainName);
                     }),
-                savePointsToProject: rows =>
+                savePointsToProject: (pointSetName, rows) =>
                 {
                     try
                     {
-                        return ExportTerrainPointsToProject(rows);
+                        var name = string.IsNullOrWhiteSpace(pointSetName)
+                            ? namedSurfaceName
+                            : pointSetName;
+                        if (string.IsNullOrWhiteSpace(name))
+                        {
+                            using var tr = doc.Database.TransactionManager.StartTransaction();
+                            name = NamedTerrainSurfaceStore.GetActiveName(tr, doc.Database)
+                                   ?? NamedTerrainSurfaceStore.SuggestNextName(tr, doc.Database);
+                            tr.Commit();
+                        }
+
+                        return SavePointSetToProject(
+                            doc.Database, name!, rows, setActive: true);
                     }
                     catch (System.Exception ex)
                     {
@@ -669,11 +949,30 @@ public sealed partial class RoadCommands
                     var result = doc.Editor.GetPoint(prompt);
                     return result.Status == PromptStatus.OK ? result.Value : null;
                 },
+                pickDrawingPoint: () =>
+                {
+                    var peo = new PromptEntityOptions(
+                        "\nIzaberite tacku terena (POINT) u crtezu: ")
+                    {
+                        AllowNone = true
+                    };
+                    peo.SetRejectMessage("\nPotrebna je POINT tacka.");
+                    peo.AddAllowedClass(typeof(DBPoint), exactMatch: true);
+                    var per = doc.Editor.GetEntity(peo);
+                    if (per.Status != PromptStatus.OK)
+                    {
+                        return null;
+                    }
+
+                    return per.ObjectId.Handle.Value;
+                },
                 listNamedTerrains: () =>
                 {
                     using var tr = doc.Database.TransactionManager.StartTransaction();
                     var names = NamedTerrainSurfaceStore.ListNames(tr, doc.Database);
-                    var active = NamedTerrainSurfaceStore.GetActiveName(tr, doc.Database);
+                    var active = !string.IsNullOrWhiteSpace(namedSurfaceName)
+                        ? namedSurfaceName
+                        : NamedTerrainSurfaceStore.GetActiveName(tr, doc.Database);
                     var suggested = NamedTerrainSurfaceStore.SuggestNextName(tr, doc.Database);
                     tr.Commit();
                     return (names, active, suggested);
@@ -690,9 +989,13 @@ public sealed partial class RoadCommands
                             return (null, $"Teren „{name}“ nije pronadjen.");
                         }
 
+                        var vms = pts.Select(p =>
+                        {
+                            var handle = FindDbPointHandle(tr, doc.Database, p);
+                            return new TerrainPointVm(p.X, p.Y, p.Z, handle, isAdded: true);
+                        }).ToList();
+                        PersistAndSyncPoints(tr, doc.Database, vms, eraseHandles: null);
                         tr.Commit();
-                        var vms = pts.Select(p => new TerrainPointVm(p.X, p.Y, p.Z, isAdded: true))
-                            .ToList();
                         return (vms, null);
                     }
                     catch (System.Exception ex)
@@ -707,7 +1010,7 @@ public sealed partial class RoadCommands
         catch (System.Exception ex)
         {
             doc.Editor.WriteMessage(
-                $"\nTCM-INZINJERING: Pregled tacaka nije otvoren: {ex.Message}");
+                $"\nTCM-ROADS: Pregled tacaka nije otvoren: {ex.Message}");
         }
 #endif
     }
@@ -804,6 +1107,7 @@ public sealed partial class RoadCommands
 
     /// <summary>
     /// Snima skup u NOD i sinhronizuje DBPOINT entitete u Model Space.
+    /// Handle-ovi novih DBPoint-ova vracaju se i u originalne VM redove.
     /// </summary>
     private static void PersistAndSyncPoints(
         Transaction tr,
@@ -837,6 +1141,19 @@ public sealed partial class RoadCommands
             row.PointHandle = pt.Handle.Value;
         }
 
+        // Propagiraj handle nazad u originalne VM redove (DeduplicateVm pravi klonove).
+        const double tol = 1e-8;
+        foreach (var original in rows)
+        {
+            var match = clean.FirstOrDefault(c =>
+                Math.Abs(c.X - original.X) <= tol && Math.Abs(c.Y - original.Y) <= tol);
+            if (match is not null && match.PointHandle != 0)
+            {
+                original.PointHandle = match.PointHandle;
+                original.Z = match.Z;
+            }
+        }
+
         if (eraseHandles is null || eraseHandles.Count == 0)
         {
             return;
@@ -860,6 +1177,44 @@ public sealed partial class RoadCommands
         }
     }
 
+    /// <summary>
+    /// Snima imenovani skup, sinhronizuje DB tacke i registruje ime u aktivnom projektu.
+    /// </summary>
+    private static string? SavePointSetToProject(
+        Database db,
+        string pointSetName,
+        IReadOnlyList<TerrainPointVm> rows,
+        bool setActive)
+    {
+        if (rows.Count == 0)
+        {
+            return "Nema tacaka za snimanje.";
+        }
+
+        string name;
+        try
+        {
+            name = NamedTerrainSurfaceStore.NormalizeName(pointSetName);
+        }
+        catch (System.Exception ex)
+        {
+            return "ERR:" + ex.Message;
+        }
+
+        using (var tr = db.TransactionManager.StartTransaction())
+        {
+            PersistAndSyncPoints(tr, db, rows, eraseHandles: null);
+            NamedTerrainSurfaceStore.SaveSurface(
+                tr, db, name, rows.Select(r => r.ToPoint3d()).ToList(), setActive);
+            tr.Commit();
+        }
+
+        var projectError = TcmProjectStore.AddPointSetToActiveProject(name);
+        return projectError is null
+            ? $"Skup tacaka „{name}“ snimljen u crtez i aktivni TCM projekat."
+            : "ERR:" + projectError;
+    }
+
     private static long FindDbPointHandle(Transaction tr, Database db, Point3d p)
     {
         var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -869,6 +1224,11 @@ public sealed partial class RoadCommands
         foreach (ObjectId id in modelSpace)
         {
             if (tr.GetObject(id, OpenMode.ForRead) is not DBPoint dbPoint || dbPoint.IsErased)
+            {
+                continue;
+            }
+
+            if (!string.Equals(dbPoint.Layer, TerrainLayerName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -958,7 +1318,7 @@ public sealed partial class RoadCommands
         }
         catch (System.Exception ex)
         {
-            doc.Editor.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            doc.Editor.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -980,6 +1340,24 @@ public sealed partial class RoadCommands
 
         try
         {
+            string? activeSurface;
+            EditableTerrainMesh editable;
+            using (var initTr = db.TransactionManager.StartTransaction())
+            {
+                activeSurface = NamedTerrainSurfaceStore.GetActiveName(initTr, db);
+                editable = EditableTerrainMesh.Build(
+                    LoadTerrainFaces(initTr, db, activeSurface),
+                    SwapEdgePickTolerance);
+                initTr.Commit();
+            }
+
+            if (editable.Triangles.Count == 0)
+            {
+                ed.WriteMessage(
+                    "\nTCM-ROADS: Nema 3DFACE aktivnog terena. Prvo TCMTERFACE.");
+                return;
+            }
+
             var added = 0;
             while (true)
             {
@@ -995,6 +1373,12 @@ public sealed partial class RoadCommands
                     string.Equals(first.StringResult, "Linija", StringComparison.OrdinalIgnoreCase))
                 {
                     added += AddTerrainLinesFromCurve(ed, db);
+                    using var reloadTr = db.TransactionManager.StartTransaction();
+                    activeSurface = NamedTerrainSurfaceStore.GetActiveName(reloadTr, db);
+                    editable = EditableTerrainMesh.Build(
+                        LoadTerrainFaces(reloadTr, db, activeSurface),
+                        SwapEdgePickTolerance);
+                    reloadTr.Commit();
                     continue;
                 }
 
@@ -1015,56 +1399,45 @@ public sealed partial class RoadCommands
                     break;
                 }
 
-                using (var tr = db.TransactionManager.StartTransaction())
+                if (!editable.TrySnap(first.Value, out var a) ||
+                    !editable.TrySnap(second.Value, out var b))
                 {
-                    var faces = LoadTerrainFaces(tr, db);
-                    if (faces.Count == 0)
-                    {
-                        ed.WriteMessage(
-                            "\nTCM-INZINJERING: Nema 3DFACE terena. Prvo TCMTERFACE.");
-                        tr.Commit();
-                        return;
-                    }
-
-                    if (!TrySnapToTinVertex(first.Value, faces, SwapEdgePickTolerance, out var a) ||
-                        !TrySnapToTinVertex(second.Value, faces, SwapEdgePickTolerance, out var b))
-                    {
-                        ed.WriteMessage(
-                            "\nTCM-INZINJERING: Kliknite blizu postojecih TIN temena (kao Civil Add Line).");
-                        tr.Commit();
-                        continue;
-                    }
-
-                    if (XyDistance(a, b) < 1e-6)
-                    {
-                        ed.WriteMessage("\nTCM-INZINJERING: Temena moraju biti razlicita.");
-                        tr.Commit();
-                        continue;
-                    }
-
-                    if (!TryCommitAddLineSegment(tr, db, a, b))
-                    {
-                        tr.Commit();
-                        continue;
-                    }
-
-                    tr.Commit();
+                    ed.WriteMessage(
+                        "\nTCM-ROADS: Kliknite blizu postojecih TIN temena (kao Civil Add Line).");
+                    continue;
                 }
 
-                RebuildTerrainFaces(ed, db, announce: false);
+                if (XyDistance(a, b) < 1e-6)
+                {
+                    ed.WriteMessage("\nTCM-ROADS: Temena moraju biti razlicita.");
+                    continue;
+                }
+
+                if (!TryApplyAddLineLocally(db, editable, activeSurface, a, b, out var failure))
+                {
+                    ShowAddLineBlockedMessage(failure);
+                    continue;
+                }
+
                 added++;
                 ed.WriteMessage(
-                    "\nTCM-INZINJERING: Add Line — ivica forsira i TIN osvezen (sacuvano za TCMTERFACE).");
+                    "\nTCM-ROADS: Add Line — lokalni edge-flip zavrsen (sacuvano za TCMTERFACE).");
             }
 
             if (added > 0)
             {
-                ed.WriteMessage($"\nTCM-INZINJERING: Ukupno Add Line: {added}.");
+                if (RefreshContoursIfDrawn(writeMessage: false))
+                {
+                    ed.WriteMessage("\nTCM-ROADS: Izohipse osvezene jednom po zavrsetku Add Line.");
+                }
+
+                ed.Regen();
+                ed.WriteMessage($"\nTCM-ROADS: Ukupno Add Line: {added}.");
             }
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -1116,7 +1489,7 @@ public sealed partial class RoadCommands
                     if (faces.Count == 0)
                     {
                         ed.WriteMessage(
-                            "\nTCM-INZINJERING: Nema 3DFACE terena. Prvo TCMTERFACE.");
+                            "\nTCM-ROADS: Nema 3DFACE terena. Prvo TCMTERFACE.");
                         tr.Commit();
                         return;
                     }
@@ -1124,7 +1497,7 @@ public sealed partial class RoadCommands
                     if (!TrySnapToTinVertex(start.Value, faces, SwapEdgePickTolerance, out current))
                     {
                         ed.WriteMessage(
-                            "\nTCM-INZINJERING: Kliknite blizu postojeceg TIN temena.");
+                            "\nTCM-ROADS: Kliknite blizu postojeceg TIN temena.");
                         tr.Commit();
                         continue;
                     }
@@ -1154,14 +1527,14 @@ public sealed partial class RoadCommands
                         if (!TrySnapToTinVertex(nextPick.Value, faces, SwapEdgePickTolerance, out var next))
                         {
                             ed.WriteMessage(
-                                "\nTCM-INZINJERING: Kliknite blizu postojeceg TIN temena.");
+                                "\nTCM-ROADS: Kliknite blizu postojeceg TIN temena.");
                             tr.Commit();
                             continue;
                         }
 
                         if (XyDistance(current, next) < 1e-6)
                         {
-                            ed.WriteMessage("\nTCM-INZINJERING: Temena moraju biti razlicita.");
+                            ed.WriteMessage("\nTCM-ROADS: Temena moraju biti razlicita.");
                             tr.Commit();
                             continue;
                         }
@@ -1175,24 +1548,24 @@ public sealed partial class RoadCommands
                     chainSegments++;
                     added++;
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Add Continuous Line — segment forsiran, TIN osvezen.");
+                        "\nTCM-ROADS: Add Continuous Line — segment forsiran, TIN osvezen.");
                 }
 
                 if (chainSegments > 0)
                 {
                     ed.WriteMessage(
-                        $"\nTCM-INZINJERING: Lanac zavrsen ({chainSegments} segment(a)).");
+                        $"\nTCM-ROADS: Lanac zavrsen ({chainSegments} segment(a)).");
                 }
             }
 
             if (added > 0)
             {
-                ed.WriteMessage($"\nTCM-INZINJERING: Ukupno Add Continuous Line: {added}.");
+                ed.WriteMessage($"\nTCM-ROADS: Ukupno Add Continuous Line: {added}.");
             }
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -1233,7 +1606,7 @@ public sealed partial class RoadCommands
 
         if (pathPts.Count < 2)
         {
-            ed.WriteMessage("\nTCM-INZINJERING: Linija nema dovoljno temena.");
+            ed.WriteMessage("\nTCM-ROADS: Linija nema dovoljno temena.");
             return 0;
         }
 
@@ -1274,7 +1647,7 @@ public sealed partial class RoadCommands
             if (candidateEdges.Count == 0)
             {
                 tr.Commit();
-                ed.WriteMessage("\nTCM-INZINJERING: Nema segmenata za Add Line.");
+                ed.WriteMessage("\nTCM-ROADS: Nema segmenata za Add Line.");
                 return 0;
             }
 
@@ -1286,25 +1659,219 @@ public sealed partial class RoadCommands
             }
 
             TerrainPointStore.Save(tr, db, points);
-            foreach (var edge in candidateEdges)
-            {
-                TerrainDefinitionStore.AddForcedEdge(tr, db, edge.A, edge.B);
-                segments++;
-            }
+            TerrainDefinitionStore.AddForcedEdges(tr, db, candidateEdges);
+            segments = candidateEdges.Count;
 
             tr.Commit();
         }
 
         if (segments == 0)
         {
-            ed.WriteMessage("\nTCM-INZINJERING: Nema segmenata za Add Line.");
+            ed.WriteMessage("\nTCM-ROADS: Nema segmenata za Add Line.");
             return 0;
         }
 
         RebuildTerrainFaces(ed, db, announce: false);
         ed.WriteMessage(
-            $"\nTCM-INZINJERING: Add Line duz linije — {segments} forsiran(ih) ivica, TIN osvezen.");
+            $"\nTCM-ROADS: Add Line duz linije — {segments} forsiran(ih) ivica, TIN osvezen.");
         return segments;
+    }
+
+    /// <summary>
+    /// Primenjuje Add Line direktno na postojeće trouglove. Menja samo trouglove
+    /// koje je edge-flip stvarno zahvatio; nema Delaunay-a ni punog redraw-a.
+    /// </summary>
+    private static bool TryApplyAddLineLocally(
+        Database db,
+        EditableTerrainMesh mesh,
+        string? surfaceName,
+        Point3d a,
+        Point3d b,
+        out string? failure)
+    {
+        if (!TerrainTinConstraints.TryEnforceEdgeOnExistingMesh(
+                mesh.Vertices, mesh.Triangles, a, b, out var updated, out failure))
+        {
+            return false;
+        }
+
+        var oldKeys = mesh.FaceIdsByTriangle;
+        var newByKey = updated
+            .Select(t => (Key: EditableTerrainMesh.TriangleKey(t), Triangle: t))
+            .ToDictionary(x => x.Key, x => x.Triangle);
+        var removed = oldKeys.Keys.Where(k => !newByKey.ContainsKey(k)).ToList();
+        var added = newByKey.Where(kv => !oldKeys.ContainsKey(kv.Key)).ToList();
+
+        using var tr = db.TransactionManager.StartTransaction();
+        RoadDrawing.EnsureRegApp(tr, db);
+        foreach (var key in removed)
+        {
+            var id = oldKeys[key];
+            if (!id.IsNull && !id.IsErased &&
+                tr.GetObject(id, OpenMode.ForWrite) is Entity entity &&
+                !entity.IsErased)
+            {
+                entity.Erase();
+            }
+        }
+
+        var modelSpace = (BlockTableRecord)tr.GetObject(
+            SymbolUtilityServices.GetBlockModelSpaceId(db),
+            OpenMode.ForWrite);
+        var addedIds = new Dictionary<(int A, int B, int C), ObjectId>();
+        foreach (var pair in added)
+        {
+            var key = pair.Key;
+            var tri = pair.Value;
+            var id = AppendTerrainFace(
+                tr,
+                modelSpace,
+                mesh.Vertices[tri.A],
+                mesh.Vertices[tri.B],
+                mesh.Vertices[tri.C],
+                surfaceName);
+            addedIds[key] = id;
+        }
+
+        TerrainDefinitionStore.AddForcedEdge(tr, db, a, b);
+        tr.Commit();
+
+        foreach (var key in removed)
+        {
+            oldKeys.Remove(key);
+        }
+
+        foreach (var pair in addedIds)
+        {
+            oldKeys[pair.Key] = pair.Value;
+        }
+
+        mesh.Triangles.Clear();
+        mesh.Triangles.AddRange(updated);
+        return true;
+    }
+
+    /// <summary>Snapshot aktivnog TIN-a + prostorni indeks temena za Add Line.</summary>
+    private sealed class EditableTerrainMesh
+    {
+        private readonly Dictionary<(int X, int Y), List<int>> _vertexGrid = new();
+        private readonly double _snapTolerance;
+        private readonly double _originX;
+        private readonly double _originY;
+
+        public List<Point3d> Vertices { get; } = [];
+        public List<TerrainDelaunay.Triangle> Triangles { get; } = [];
+        public Dictionary<(int A, int B, int C), ObjectId> FaceIdsByTriangle { get; } = new();
+
+        private EditableTerrainMesh(double snapTolerance, double originX, double originY)
+        {
+            _snapTolerance = Math.Max(1e-6, snapTolerance);
+            _originX = originX;
+            _originY = originY;
+        }
+
+        public static EditableTerrainMesh Build(IReadOnlyList<Face> faces, double snapTolerance)
+        {
+            var all = new List<Point3d>(faces.Count * 3);
+            foreach (var face in faces)
+            {
+                all.Add(face.GetVertexAt(0));
+                all.Add(face.GetVertexAt(1));
+                all.Add(face.GetVertexAt(2));
+            }
+
+            var originX = all.Count == 0 ? 0 : all.Min(p => p.X);
+            var originY = all.Count == 0 ? 0 : all.Min(p => p.Y);
+            var mesh = new EditableTerrainMesh(snapTolerance, originX, originY);
+            var index = new Dictionary<(long X, long Y), int>();
+
+            int VertexIndex(Point3d p)
+            {
+                var key = (
+                    (long)Math.Round(p.X * 1_000_000.0),
+                    (long)Math.Round(p.Y * 1_000_000.0));
+                if (index.TryGetValue(key, out var existing))
+                {
+                    return existing;
+                }
+
+                var next = mesh.Vertices.Count;
+                mesh.Vertices.Add(p);
+                index[key] = next;
+                var cell = mesh.Cell(p.X, p.Y);
+                if (!mesh._vertexGrid.TryGetValue(cell, out var bucket))
+                {
+                    bucket = [];
+                    mesh._vertexGrid[cell] = bucket;
+                }
+
+                bucket.Add(next);
+                return next;
+            }
+
+            foreach (var face in faces)
+            {
+                var tri = new TerrainDelaunay.Triangle(
+                    VertexIndex(face.GetVertexAt(0)),
+                    VertexIndex(face.GetVertexAt(1)),
+                    VertexIndex(face.GetVertexAt(2)));
+                var key = TriangleKey(tri);
+                if (mesh.FaceIdsByTriangle.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                mesh.Triangles.Add(tri);
+                mesh.FaceIdsByTriangle[key] = face.ObjectId;
+            }
+
+            return mesh;
+        }
+
+        public bool TrySnap(Point3d pick, out Point3d vertex)
+        {
+            vertex = default;
+            var cell = Cell(pick.X, pick.Y);
+            var best = _snapTolerance;
+            var found = false;
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                for (var dy = -1; dy <= 1; dy++)
+                {
+                    if (!_vertexGrid.TryGetValue((cell.X + dx, cell.Y + dy), out var bucket))
+                    {
+                        continue;
+                    }
+
+                    foreach (var i in bucket)
+                    {
+                        var candidate = Vertices[i];
+                        var distance = XyDistance(pick, candidate);
+                        if (distance > best)
+                        {
+                            continue;
+                        }
+
+                        best = distance;
+                        vertex = candidate;
+                        found = true;
+                    }
+                }
+            }
+
+            return found;
+        }
+
+        public static (int A, int B, int C) TriangleKey(TerrainDelaunay.Triangle tri)
+        {
+            var values = new[] { tri.A, tri.B, tri.C };
+            Array.Sort(values);
+            return (values[0], values[1], values[2]);
+        }
+
+        private (int X, int Y) Cell(double x, double y) =>
+            ((int)Math.Floor((x - _originX) / _snapTolerance),
+             (int)Math.Floor((y - _originY) / _snapTolerance));
     }
 
     private static bool TryCommitAddLineSegment(Transaction tr, Database db, Point3d a, Point3d b)
@@ -1324,7 +1891,7 @@ public sealed partial class RoadCommands
     {
         MessageBox.Show(
             message ?? "Add Line nije moguce.",
-            "TCM-INŽINJERING — Add Line",
+            "TCM-ROADS — Add Line",
             MessageBoxButton.OK,
             MessageBoxImage.Warning);
     }
@@ -1451,7 +2018,7 @@ public sealed partial class RoadCommands
                 if (faces.Count < 2)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema dovoljno 3DFACE terena. Prvo TCMTERFACE.");
+                        "\nTCM-ROADS: Nema dovoljno 3DFACE terena. Prvo TCMTERFACE.");
                     tr.Commit();
                     break;
                 }
@@ -1459,7 +2026,7 @@ public sealed partial class RoadCommands
                 if (!TryFindSharedEdgeNear(pick.Value, faces, SwapEdgePickTolerance, out var pair))
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema pogodne ivice (klik unutar 1 jedinice, " +
+                        "\nTCM-ROADS: Nema pogodne ivice (klik unutar 1 jedinice, " +
                         "dva trougla, konveksan cetvorougao).");
                     tr.Commit();
                     continue;
@@ -1482,7 +2049,7 @@ public sealed partial class RoadCommands
                 TerrainDefinitionStore.AddForcedEdgeAfterSwap(tr, db, a, b, c, d);
                 tr.Commit();
                 swapped++;
-                ed.WriteMessage("\nTCM-INZINJERING: Ivica zamenjena (sacuvano za TCMTERFACE).");
+                ed.WriteMessage("\nTCM-ROADS: Ivica zamenjena (sacuvano za TCMTERFACE).");
                 if (RefreshContoursIfDrawn(writeMessage: false))
                 {
                     ed.WriteMessage(" Izohipse osvezene.");
@@ -1491,12 +2058,12 @@ public sealed partial class RoadCommands
 
             if (swapped > 0)
             {
-                ed.WriteMessage($"\nTCM-INZINJERING: Ukupno zamenjeno ivica: {swapped}.");
+                ed.WriteMessage($"\nTCM-ROADS: Ukupno zamenjeno ivica: {swapped}.");
             }
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -1519,6 +2086,7 @@ public sealed partial class RoadCommands
         try
         {
             var deletedFaces = 0;
+            TerrainFaceEdgeIndex? edgeIndex = null;
             while (true)
             {
                 var prompt = new PromptPointOptions(
@@ -1533,6 +2101,7 @@ public sealed partial class RoadCommands
                     string.Equals(pick.StringResult, "Prozor", StringComparison.OrdinalIgnoreCase))
                 {
                     deletedFaces += DeleteTerrainFacesByWindow(ed, db);
+                    edgeIndex = null; // indeks vise nije validan posle prozora
                     continue;
                 }
 
@@ -1542,37 +2111,34 @@ public sealed partial class RoadCommands
                 }
 
                 using var tr = db.TransactionManager.StartTransaction();
-                var faces = LoadTerrainFaces(tr, db);
-                if (faces.Count == 0)
+                edgeIndex ??= TerrainFaceEdgeIndex.Build(tr, db);
+                if (edgeIndex.FaceCount == 0)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema 3DFACE terena. Prvo TCMTERFACE.");
+                        "\nTCM-ROADS: Nema 3DFACE terena. Prvo TCMTERFACE.");
                     tr.Commit();
                     break;
                 }
 
-                if (!TryFindEdgeNear(pick.Value, faces, SwapEdgePickTolerance, out var edgeA, out var edgeB))
+                if (!edgeIndex.TryFindEdgeNear(
+                        pick.Value, SwapEdgePickTolerance, out var edgeA, out var edgeB, out var faceIds))
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema ivice unutar 1 jedinice od klika.");
+                        "\nTCM-ROADS: Nema ivice unutar 1 jedinice od klika.");
                     tr.Commit();
                     continue;
                 }
 
                 var erased = 0;
-                foreach (var face in faces)
+                foreach (var faceId in faceIds)
                 {
-                    if (face.IsErased)
+                    if (faceId.IsNull ||
+                        tr.GetObject(faceId, OpenMode.ForWrite) is not Face face ||
+                        face.IsErased)
                     {
                         continue;
                     }
 
-                    if (!FaceHasEdge(face, edgeA, edgeB))
-                    {
-                        continue;
-                    }
-
-                    face.UpgradeOpen();
                     face.Erase();
                     erased++;
                 }
@@ -1580,20 +2146,21 @@ public sealed partial class RoadCommands
                 if (erased > 0)
                 {
                     TerrainDefinitionStore.AddDeletedEdge(tr, db, edgeA, edgeB);
+                    edgeIndex.RemoveFaces(faceIds);
                 }
 
                 tr.Commit();
                 deletedFaces += erased;
                 ed.WriteMessage(
                     erased > 0
-                        ? $"\nTCM-INZINJERING: Obrisano {erased} × 3DFACE (ivica sacuvana za TCMTERFACE)."
-                        : "\nTCM-INZINJERING: Nista nije obrisano.");
+                        ? $"\nTCM-ROADS: Obrisano {erased} × 3DFACE (ivica sacuvana za TCMTERFACE)."
+                        : "\nTCM-ROADS: Nista nije obrisano.");
             }
 
             if (deletedFaces > 0)
             {
                 ed.WriteMessage(
-                    $"\nTCM-INZINJERING: Ukupno obrisano 3DFACE: {deletedFaces}.");
+                    $"\nTCM-ROADS: Ukupno obrisano 3DFACE: {deletedFaces}.");
                 if (RefreshContoursIfDrawn(writeMessage: false))
                 {
                     ed.WriteMessage(" Izohipse osvezene.");
@@ -1602,7 +2169,7 @@ public sealed partial class RoadCommands
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -1625,6 +2192,7 @@ public sealed partial class RoadCommands
 
         using var tr = db.TransactionManager.StartTransaction();
         var erased = 0;
+        var deletedEdges = new List<(Point3d A, Point3d B)>();
         foreach (SelectedObject selected in selection.Value)
         {
             if (selected?.ObjectId.IsNull != false)
@@ -1646,9 +2214,9 @@ public sealed partial class RoadCommands
             var verts = GetTriangleVertices(face);
             if (verts.Length >= 3)
             {
-                TerrainDefinitionStore.AddDeletedEdge(tr, db, verts[0], verts[1]);
-                TerrainDefinitionStore.AddDeletedEdge(tr, db, verts[1], verts[2]);
-                TerrainDefinitionStore.AddDeletedEdge(tr, db, verts[2], verts[0]);
+                deletedEdges.Add((verts[0], verts[1]));
+                deletedEdges.Add((verts[1], verts[2]));
+                deletedEdges.Add((verts[2], verts[0]));
             }
 
             face.UpgradeOpen();
@@ -1656,47 +2224,116 @@ public sealed partial class RoadCommands
             erased++;
         }
 
+        if (deletedEdges.Count > 0)
+        {
+            TerrainDefinitionStore.AddDeletedEdges(tr, db, deletedEdges);
+        }
+
         tr.Commit();
         if (erased > 0)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING: Obrisano {erased} × 3DFACE (prozor, edit sacuvan).");
+            ed.WriteMessage($"\nTCM-ROADS: Obrisano {erased} × 3DFACE (prozor, edit sacuvan).");
         }
 
         return erased;
     }
 
-    private static void RebuildTerrainFaces(
+    /// <summary>Javni ulaz za restore TIN-a posle brisanja granice.</summary>
+    internal static IReadOnlyList<(Point3d A, Point3d B)> RebuildTerrainFacesPublic(
         Editor ed,
         Database db,
         bool announce,
-        string? surfaceName = null)
+        string? surfaceName = null,
+        IProgress<(int Percent, string Status)>? progress = null) =>
+        RebuildTerrainFaces(ed, db, announce, surfaceName, progress);
+
+    private static IReadOnlyList<(Point3d A, Point3d B)> RebuildTerrainFaces(
+        Editor ed,
+        Database db,
+        bool announce,
+        string? surfaceName = null,
+        IProgress<(int Percent, string Status)>? progress = null)
     {
         using var writeTr = db.TransactionManager.StartTransaction();
+        progress?.Report((54, "Ucitavam tacke terena…"));
         var points = TerrainPointStore.Load(writeTr, db).ToList();
         if (points.Count < 3)
         {
             writeTr.Commit();
-            return;
+            return Array.Empty<(Point3d A, Point3d B)>();
         }
 
         string? resolvedName = null;
         if (!string.IsNullOrWhiteSpace(surfaceName))
         {
             resolvedName = NamedTerrainSurfaceStore.NormalizeName(surfaceName);
+            if (NamedTerrainSurfaceStore.IsBoundaryCompanionName(resolvedName))
+            {
+                resolvedName = resolvedName[..^("_Granica".Length)];
+            }
+
             NamedTerrainSurfaceStore.SaveSurface(writeTr, db, resolvedName, points);
         }
         else
         {
             resolvedName = NamedTerrainSurfaceStore.GetActiveName(writeTr, db);
+            if (NamedTerrainSurfaceStore.IsBoundaryCompanionName(resolvedName))
+            {
+                resolvedName = resolvedName![..^("_Granica".Length)];
+                if (string.IsNullOrWhiteSpace(resolvedName))
+                {
+                    resolvedName = "Teren_1";
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(resolvedName))
+            {
+                var loaded = NamedTerrainSurfaceStore.TryLoadSurface(writeTr, db, resolvedName!);
+                if (loaded is { Count: >= 3 })
+                {
+                    points = loaded.ToList();
+                }
+            }
         }
 
-        var built = TerrainTinConstraints.Build(writeTr, db, points);
+        var built = TerrainTinConstraints.Build(writeTr, db, points, progress: progress);
         if (built.Triangles.Count == 0)
         {
             ed.WriteMessage(
-                "\nTCM-INZINJERING: Triangulacija nije uspela (tacke / granica / breakline).");
+                "\nTCM-ROADS: Triangulacija nije uspela (tacke / granica / breakline).");
             writeTr.Commit();
-            return;
+            return Array.Empty<(Point3d A, Point3d B)>();
+        }
+
+        // Bazni teren ostaje netaknut; tačke granice → poseban skup *_Granica.
+        var baseSurfaceName = string.IsNullOrWhiteSpace(resolvedName)
+            ? "Teren_1"
+            : (NamedTerrainSurfaceStore.IsBoundaryCompanionName(resolvedName)
+                ? resolvedName![..^("_Granica".Length)]
+                : resolvedName!);
+        if (string.IsNullOrWhiteSpace(baseSurfaceName))
+        {
+            baseSurfaceName = "Teren_1";
+        }
+
+        var granicaName = NamedTerrainSurfaceStore.BoundaryCompanionName(baseSurfaceName);
+        TerrainBoundaryPointDrawer.SyncResult? boundSync = null;
+        if (built.BoundaryPoints.Count > 0)
+        {
+            NamedTerrainSurfaceStore.SaveSurface(
+                writeTr, db, granicaName, built.BoundaryPoints, setActive: false);
+        }
+        else
+        {
+            NamedTerrainSurfaceStore.DeleteSurface(writeTr, db, granicaName);
+        }
+
+        // Radni skup = samo bazne tačke (ne mešati granicu).
+        TerrainPointStore.Save(writeTr, db, points);
+        if (!string.IsNullOrWhiteSpace(resolvedName) &&
+            !NamedTerrainSurfaceStore.IsBoundaryCompanionName(resolvedName))
+        {
+            NamedTerrainSurfaceStore.SetActiveName(writeTr, db, resolvedName!);
         }
 
         RoadDrawing.EnsureRegApp(writeTr, db);
@@ -1708,6 +2345,7 @@ public sealed partial class RoadCommands
         EnsureNamedLayer(writeTr, db, borderLayerBase,
             borderComp.ColorByLayer ? (short)2 : borderComp.ColorAci);
 
+        progress?.Report((94, "Brisem stare 3DFACE…"));
         var erased = EraseTerrainFaces(writeTr, db, resolvedName);
         var erasedBorders = EraseTerrainBorders(writeTr, db, resolvedName);
 
@@ -1715,6 +2353,14 @@ public sealed partial class RoadCommands
             SymbolUtilityServices.GetBlockModelSpaceId(db),
             OpenMode.ForWrite);
 
+        boundSync = TerrainBoundaryPointDrawer.Sync(
+            writeTr,
+            db,
+            modelSpace,
+            granicaName,
+            built.BoundaryPoints);
+
+        progress?.Report((96, $"Crtam {built.Triangles.Count} × 3DFACE…"));
         var created = 0;
         foreach (var tri in built.Triangles)
         {
@@ -1726,6 +2372,12 @@ public sealed partial class RoadCommands
                 built.Vertices[tri.C],
                 resolvedName);
             created++;
+            if (progress is not null && built.Triangles.Count > 0 &&
+                created % Math.Max(1, built.Triangles.Count / 20) == 0)
+            {
+                var pct = 96 + (int)(3.0 * created / built.Triangles.Count);
+                progress.Report((Math.Min(99, pct), $"Crtam 3DFACE {created}/{built.Triangles.Count}…"));
+            }
         }
 
         var borderDrawn = 0;
@@ -1745,7 +2397,7 @@ public sealed partial class RoadCommands
         if (announce)
         {
             ed.WriteMessage(
-                $"\nTCM-INZINJERING: Kreiran 3D teren" +
+                $"\nTCM-ROADS: Kreiran 3D teren" +
                 (resolvedName is not null ? $" „{resolvedName}“" : string.Empty) +
                 $" — {created} × 3DFACE na layeru {TerrainLayerNames.For(TerrainLayerName, resolvedName)} " +
                 $"(od {built.Vertices.Count} tacaka" +
@@ -1757,12 +2409,27 @@ public sealed partial class RoadCommands
                 (erased > 0 ? $", obrisano starih {erased}" : string.Empty) +
                 (erasedBorders > 0 ? $", stari border {erasedBorders}" : string.Empty) +
                 ").");
+            if (built.BoundaryPoints.Count > 0 && boundSync is not null)
+            {
+                ed.WriteMessage(
+                    $"\nTCM-ROADS: Dodato {boundSync.Drawn} tacaka na granici → „{granicaName}“ " +
+                    $"({boundSync.StyleLabel}). Bazni teren „{baseSurfaceName}“ nepromenjen. " +
+                    "TIN koristi oba skupa.");
+                if (!boundSync.UsedBlock)
+                {
+                    ed.WriteMessage(
+                        "\nTCM-ROADS: Stil bloka nije snimljen — koriscen DBPoint. " +
+                        "Pokrenite TCMTERBLOK da definisete tip tacke (npr. TACKA/KOTAC).");
+                }
+            }
         }
 
         if (RefreshContoursIfDrawn(writeMessage: false))
         {
-            ed.WriteMessage("\nTCM-INZINJERING: Izohipse osvezene (TIN promenjen).");
+            ed.WriteMessage("\nTCM-ROADS: Izohipse osvezene (TIN promenjen).");
         }
+
+        return built.FailedForcedEdges;
     }
 
     private static int AppendTerrainBorder(
@@ -1867,7 +2534,7 @@ public sealed partial class RoadCommands
         tr.AddNewlyCreatedDBObject(layer, true);
     }
 
-    private static void AppendTerrainFace(
+    private static ObjectId AppendTerrainFace(
         Transaction tr,
         BlockTableRecord modelSpace,
         Point3d a,
@@ -1882,6 +2549,7 @@ public sealed partial class RoadCommands
         modelSpace.AppendEntity(face);
         tr.AddNewlyCreatedDBObject(face, true);
         TerrainFaceXData.Attach(face, surfaceName);
+        return face.ObjectId;
     }
 
     private static int EraseTerrainFaces(Transaction tr, Database db, string? surfaceName = null)

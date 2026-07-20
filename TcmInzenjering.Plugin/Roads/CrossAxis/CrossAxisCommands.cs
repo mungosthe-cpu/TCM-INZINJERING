@@ -20,7 +20,7 @@ public sealed class CrossAxisCommandService
         }
 
 #if BRICSCAD
-        doc.Editor.WriteMessage("\nTCM-INZINJERING: Podesavanje poprecnih osa nije dostupno u BricsCAD verziji.");
+        doc.Editor.WriteMessage("\nTCM-ROADS: Podesavanje poprecnih osa nije dostupno u BricsCAD verziji.");
         return;
 #else
         RunDialogLoop(doc);
@@ -119,7 +119,7 @@ public sealed class CrossAxisCommandService
 
                     return;
                 default:
-                    ed.WriteMessage("\nTCM-INZINJERING: komanda otkazana.");
+                    ed.WriteMessage("\nTCM-ROADS: komanda otkazana.");
                     return;
             }
         }
@@ -169,7 +169,7 @@ public sealed class CrossAxisCommandService
         tr.Commit();
 
         doc.Editor.WriteMessage(
-            $"\nTCM-INZINJERING: Pomereno {updated} oznaka na {targetHandles.Count} poprecnih osa" +
+            $"\nTCM-ROADS: Pomereno {updated} oznaka na {targetHandles.Count} poprecnih osa" +
             (result.LengthsEnabled ? $"; duzina L={result.LeftLength:0.####}/D={result.RightLength:0.####} ({resized} osa)." : "."));
     }
 
@@ -243,12 +243,12 @@ public sealed class CrossAxisCommandService
         if (handles.Count == 0)
         {
             ed.WriteMessage(
-                "\nTCM-INZINJERING: U selekciji nema poprecnih osa (zanemareni su ostali objekti).");
+                "\nTCM-ROADS: U selekciji nema poprecnih osa (zanemareni su ostali objekti).");
             return Array.Empty<long>();
         }
 
         ed.WriteMessage(
-            $"\nTCM-INZINJERING: U tabeli ({handles.Count}): {string.Join(", ", names)}" +
+            $"\nTCM-ROADS: U tabeli ({handles.Count}): {string.Join(", ", names)}" +
             (registered > 0 ? $" [novo: {registered}]." : "."));
         return handles;
     }
@@ -267,14 +267,14 @@ public sealed class CrossAxisCommandService
             if (!CrossAxisScanner.TryGetEntity(tr, doc.Database, pending.SelectedHandles[0], out var axisEntity))
             {
                 tr.Commit();
-                ed.WriteMessage("\nTCM-INZINJERING: Poprecna osa nije pronadjena.");
+                ed.WriteMessage("\nTCM-ROADS: Poprecna osa nije pronadjena.");
                 return false;
             }
 
             if (!CrossAxisGeometry.TryGetFrame(axisEntity, out origin, out _, out _))
             {
                 tr.Commit();
-                ed.WriteMessage("\nTCM-INZINJERING: Geometrija poprecne ose nije podrzana.");
+                ed.WriteMessage("\nTCM-ROADS: Geometrija poprecne ose nije podrzana.");
                 return false;
             }
 
@@ -298,7 +298,7 @@ public sealed class CrossAxisCommandService
                 !CrossAxisLayoutService.TryComputeOffsetsFromPoint(axisEntity, pointResult.Value, out var offsetX, out var offsetY))
             {
                 tr.Commit();
-                ed.WriteMessage("\nTCM-INZINJERING: Nije moguce izracunati odmak.");
+                ed.WriteMessage("\nTCM-ROADS: Nije moguce izracunati odmak.");
                 return false;
             }
 

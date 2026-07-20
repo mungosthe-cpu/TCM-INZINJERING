@@ -2,9 +2,11 @@ namespace TcmInzenjering.Plugin.Update;
 
 public static class PluginInfo
 {
+    public const string ProductName = "TCM-ROADS";
+    public const string ProductNameAscii = "TCM-ROADS";
+
     /// <summary>
     /// GitHub korisnik/organizacija i repozitorijum za proveru nadogradnje.
-    /// Izmeni pre objavljivanja na GitHub.
     /// </summary>
     public const string GitHubOwner = "mungosthe-cpu";
     public const string GitHubRepo = "TCM-INZINJERING";

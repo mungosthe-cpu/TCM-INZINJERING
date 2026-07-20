@@ -47,6 +47,7 @@ internal static class StationLabelService
 
         var count = RefreshLabels(tr, db, axisName, metadata);
         UpdateAxisReference(tr, db, axisName, metadata.StartStation);
+        count += LaneEdgeDrawingService.RefreshIfExists(tr, db, axisName);
         count += TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
         count += ProfileViewRefresh.RefreshIfExists(tr, db, axisName);
         RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
@@ -126,6 +127,7 @@ internal static class StationLabelService
         }
 
         UpdateAxisReference(tr, db, axisName, metadata.StartStation);
+        count += LaneEdgeDrawingService.RefreshIfExists(tr, db, axisName);
         count += TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
         count += ProfileViewRefresh.RefreshIfExists(tr, db, axisName);
         RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
@@ -222,6 +224,7 @@ internal static class StationLabelService
             OpenMode.ForWrite);
 
         var stationCount = 0;
+        var radiusCount = 0;
         var segmentCount = 0;
         var nodeCount = 0;
         RoadDrawing.RunWithUnlockedAxisLayer(tr, db, () =>
@@ -229,6 +232,12 @@ internal static class StationLabelService
             DeleteAxisEntities(tr, db, axisName);
             RoadDrawing.DrawAxisCore(tr, modelSpace, visibleAxis, polylineId, stationOptions.AxisColorIndex);
             stationCount = RoadDrawing.DrawStationLabels(tr, modelSpace, visibleAxis, stationOptions);
+            radiusCount = RoadDrawing.DrawRadiusLabels(
+                tr,
+                modelSpace,
+                visibleAxis,
+                metadata.TextHeight,
+                metadata.LabelSideSign);
             segmentCount = metadata.DrawSegmentLabels
                 ? RoadDrawing.DrawSegmentLabels(
                     tr,
@@ -288,10 +297,11 @@ internal static class StationLabelService
         });
 
         UpdateAxisReference(tr, db, axisName, stationOptions.StartStation);
+        var laneEdges = LaneEdgeDrawingService.RefreshIfExists(tr, db, axisName);
         var projected = TerrainProjectionRefresh.RefreshIfExists(tr, db, axisName);
         var profiles = ProfileViewRefresh.RefreshIfExists(tr, db, axisName);
         RoadDrawing.EnsureTangentOnTop(tr, db, axisName);
-        return stationCount + segmentCount + nodeCount + projected + profiles;
+        return stationCount + radiusCount + segmentCount + nodeCount + laneEdges + projected + profiles;
     }
 
     private static int RefreshLabels(Transaction tr, Database db, string axisName, RoadAxisMetadata metadata)
@@ -319,6 +329,13 @@ internal static class StationLabelService
             axis,
             metadata.ToLabelOptions());
 
+        var radiusCount = RoadDrawing.DrawRadiusLabels(
+            tr,
+            modelSpace,
+            axis,
+            metadata.TextHeight,
+            metadata.LabelSideSign);
+
         var segmentCount = metadata.DrawSegmentLabels
             ? RoadDrawing.DrawSegmentLabels(
                 tr,
@@ -335,7 +352,7 @@ internal static class StationLabelService
         CrossAxisDrawService.RestoreManualCrossAxisAnnotations(
             tr, db, axisName, axis, metadata, metadata.ToLabelOptions());
 
-        return stationCount + segmentCount + nodeCount;
+        return stationCount + radiusCount + segmentCount + nodeCount;
     }
 
     private static void UpdateAxisReference(
@@ -355,89 +372,38 @@ internal static class StationLabelService
 
     public static void DeleteAxisEntities(Transaction tr, Database db, string axisName)
     {
-        var modelSpace = (BlockTableRecord)tr.GetObject(
-            SymbolUtilityServices.GetBlockModelSpaceId(db),
-            OpenMode.ForWrite);
-
-        var toErase = new List<ObjectId>();
-        foreach (ObjectId id in modelSpace)
-        {
-            var entity = (Entity)tr.GetObject(id, OpenMode.ForRead);
-            if (entity.Layer != RoadDrawing.AxisLayerName ||
-                !RoadXData.TryReadAxisElement(entity, out var name, out _))
-            {
-                continue;
-            }
-
-            if (string.Equals(name, axisName, StringComparison.OrdinalIgnoreCase))
-            {
-                toErase.Add(id);
-            }
-        }
-
+        var toErase = RoadEntityIndex.GetForAxisLayer(tr, db, axisName, RoadDrawing.AxisLayerName);
         foreach (var id in toErase)
         {
             var entity = (Entity)tr.GetObject(id, OpenMode.ForWrite);
             entity.Erase();
         }
+
+        RoadEntityIndex.Invalidate();
     }
 
     public static void DeleteRadiusLabels(Transaction tr, Database db, string axisName)
     {
-        var modelSpace = (BlockTableRecord)tr.GetObject(
-            SymbolUtilityServices.GetBlockModelSpaceId(db),
-            OpenMode.ForWrite);
-
-        var toErase = new List<ObjectId>();
-        foreach (ObjectId id in modelSpace)
-        {
-            var entity = (Entity)tr.GetObject(id, OpenMode.ForRead);
-            if (entity.Layer != RoadDrawing.RadiusLayerName ||
-                !RoadXData.TryReadRadiusAnnotation(entity, out var name, out _))
-            {
-                continue;
-            }
-
-            if (string.Equals(name, axisName, StringComparison.OrdinalIgnoreCase))
-            {
-                toErase.Add(id);
-            }
-        }
-
+        var toErase = RoadEntityIndex.GetForAxisLayer(tr, db, axisName, RoadDrawing.RadiusLayerName);
         foreach (var id in toErase)
         {
             var entity = (Entity)tr.GetObject(id, OpenMode.ForWrite);
             entity.Erase();
         }
+
+        RoadEntityIndex.Invalidate();
     }
 
     public static void DeleteLabels(Transaction tr, Database db, string axisName)
     {
-        var modelSpace = (BlockTableRecord)tr.GetObject(
-            SymbolUtilityServices.GetBlockModelSpaceId(db),
-            OpenMode.ForWrite);
-
-        var toErase = new List<ObjectId>();
-        foreach (ObjectId id in modelSpace)
-        {
-            var entity = (Entity)tr.GetObject(id, OpenMode.ForRead);
-            if (entity.Layer != RoadDrawing.StationLayerName ||
-                !RoadXData.TryReadStationLabel(entity, out var name, out _, out _))
-            {
-                continue;
-            }
-
-            if (string.Equals(name, axisName, StringComparison.OrdinalIgnoreCase))
-            {
-                toErase.Add(id);
-            }
-        }
-
+        var toErase = RoadEntityIndex.GetForAxisLayer(tr, db, axisName, RoadDrawing.StationLayerName);
         foreach (var id in toErase)
         {
             var entity = (Entity)tr.GetObject(id, OpenMode.ForWrite);
             entity.Erase();
         }
+
+        RoadEntityIndex.Invalidate();
     }
 
     public static void DeleteCrossAnnotations(Transaction tr, Database db, string axisName)

@@ -12,6 +12,8 @@ internal static class ProfileViewRefresh
     private static readonly object Gate = new();
     private static readonly HashSet<string> PendingAxes = new(StringComparer.OrdinalIgnoreCase);
     private static bool _idleHooked;
+    private static DateTime _earliestIdleUtc = DateTime.MinValue;
+    private const int IdleDebounceMs = 250;
 
     public static int RefreshIfExists(Transaction tr, Database db, string axisName)
     {
@@ -41,6 +43,12 @@ internal static class ProfileViewRefresh
 
         var minZ = samples.Min(s => s.Elevation);
         var maxZ = samples.Max(s => s.Elevation);
+        if (ProfileGradeSampler.TryLoadSamples(tr, db, axisName, out var gradeSamples) &&
+            gradeSamples.Count > 0)
+        {
+            minZ = Math.Min(minZ, gradeSamples.Min(s => s.Elevation));
+            maxZ = Math.Max(maxZ, gradeSamples.Max(s => s.Elevation));
+        }
 
         var modelSpace = (BlockTableRecord)tr.GetObject(
             SymbolUtilityServices.GetBlockModelSpaceId(db),
@@ -113,6 +121,7 @@ internal static class ProfileViewRefresh
         lock (Gate)
         {
             PendingAxes.Add(axisName);
+            _earliestIdleUtc = DateTime.UtcNow.AddMilliseconds(IdleDebounceMs);
             if (_idleHooked)
             {
                 return;
@@ -125,6 +134,11 @@ internal static class ProfileViewRefresh
 
     private static void OnIdleRefresh(object? sender, EventArgs e)
     {
+        if (DateTime.UtcNow < _earliestIdleUtc)
+        {
+            return;
+        }
+
         string[] axes;
         lock (Gate)
         {
@@ -159,12 +173,12 @@ internal static class ProfileViewRefresh
             if (refreshed > 0)
             {
                 doc.Editor.WriteMessage(
-                    $"\nTCM-INZINJERING: Podužni profil osvežen ({refreshed}) — uključene nove poprečne ose.");
+                    $"\nTCM-ROADS: Podužni profil osvežen ({refreshed}) — uključene nove poprečne ose.");
             }
         }
         catch (System.Exception ex)
         {
-            doc.Editor.WriteMessage($"\nTCM-INZINJERING: greska pri osvezavanju profila - {ex.Message}");
+            doc.Editor.WriteMessage($"\nTCM-ROADS: greska pri osvezavanju profila - {ex.Message}");
         }
     }
 }

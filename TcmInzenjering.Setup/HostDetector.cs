@@ -124,7 +124,7 @@ internal static class HostDetector
 internal static class RegistryInstaller
 {
   private const string AppName = "TcmInzenjering";
-  private const string Description = "TCM-INZINJERING";
+  private const string Description = "TCM-ROADS";
 
   public static void RegisterAutocadApplication(string series, string productCode, string dllPath)
   {

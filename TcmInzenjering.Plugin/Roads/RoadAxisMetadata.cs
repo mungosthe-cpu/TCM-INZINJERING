@@ -4,7 +4,7 @@ namespace TcmInzenjering.Plugin.Roads;
 
 internal sealed class RoadAxisMetadata
 {
-    public string Name { get; init; } = "OS-1";
+    public string Name { get; init; } = "OSA-1";
     public double StartStation { get; init; }
     public double EndStation { get; init; }
     public double Interval { get; init; } = 20;

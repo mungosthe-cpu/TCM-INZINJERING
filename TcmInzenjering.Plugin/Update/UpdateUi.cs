@@ -1,4 +1,5 @@
 using TcmInzenjering.Plugin;
+using TcmInzenjering.Plugin.Dialogs;
 #if !BRICSCAD
 using System.Windows;
 #endif
@@ -58,20 +59,57 @@ internal static class UpdateUi
             return;
         }
 
+#if !BRICSCAD
+        try
+        {
+            var dialog = new UpdateAvailableDialog(
+                result.CurrentVersion,
+                result.LatestVersion ?? "?",
+                result.ReleaseNotes);
+            if (_owner is not null)
+            {
+                dialog.Owner = _owner;
+            }
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            UpdatePreferences.Save(dialog.CheckOnStartup);
+            if (!dialog.StartDownload)
+            {
+                return;
+            }
+        }
+        catch
+        {
+            // Fallback na MessageBox ako WPF dijalog ne uspe.
+            var notes = string.IsNullOrWhiteSpace(result.ReleaseNotes)
+                ? string.Empty
+                : "\n\nNovo u ovoj verziji:\n" + result.ReleaseNotes;
+            if (!AskYesNo(
+                    $"Dostupna je nova verzija {result.LatestVersion}.\n" +
+                    $"Trenutna verzija: {result.CurrentVersion}." +
+                    notes +
+                    "\n\nPokrenuti preuzimanje?"))
+            {
+                return;
+            }
+        }
+#else
         var notes = string.IsNullOrWhiteSpace(result.ReleaseNotes)
             ? string.Empty
             : "\n\nNovo u ovoj verziji:\n" + result.ReleaseNotes;
-
         if (!AskYesNo(
                 $"Dostupna je nova verzija {result.LatestVersion}.\n" +
                 $"Trenutna verzija: {result.CurrentVersion}." +
                 notes +
-                "\n\nPreuzimanje ide u posebnom prozoru — AutoCAD možete nastaviti da koristite.\n" +
-                "Kad zatvorite AutoCAD, instalacija se automatski završava.\n\n" +
-                "Pokrenuti preuzimanje?"))
+                "\n\nPokrenuti preuzimanje?"))
         {
             return;
         }
+#endif
 
         if (!PluginUpdater.TryStartUpdate(result, out var message))
         {
@@ -86,14 +124,14 @@ internal static class UpdateUi
     {
 #if BRICSCAD
         Autodesk.AutoCAD.ApplicationServices.Core.Application.DocumentManager
-            .MdiActiveDocument?.Editor.WriteMessage("\nTCM-INZINJERING: " + message.Replace('\n', ' '));
+            .MdiActiveDocument?.Editor.WriteMessage("\nTCM-ROADS: " + message.Replace('\n', ' '));
 #else
         if (_owner is not null)
         {
             MessageBox.Show(
                 _owner,
                 message,
-                "TCM-INŽINJERING — Nadogradnja",
+                "TCM-ROADS — Nadogradnja",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -101,7 +139,7 @@ internal static class UpdateUi
         {
             MessageBox.Show(
                 message,
-                "TCM-INŽINJERING — Nadogradnja",
+                "TCM-ROADS — Nadogradnja",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -132,13 +170,13 @@ internal static class UpdateUi
             ? MessageBox.Show(
                 _owner,
                 message,
-                "TCM-INŽINJERING — Nadogradnja",
+                "TCM-ROADS — Nadogradnja",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
                 MessageBoxResult.Yes)
             : MessageBox.Show(
                 message,
-                "TCM-INŽINJERING — Nadogradnja",
+                "TCM-ROADS — Nadogradnja",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
                 MessageBoxResult.Yes);

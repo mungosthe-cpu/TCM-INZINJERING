@@ -84,7 +84,7 @@ public partial class ChainageFormatDialog : Window
     {
         if (!TryReadFormat(out var message))
         {
-            MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, message, "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

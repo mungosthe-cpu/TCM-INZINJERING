@@ -236,8 +236,9 @@ public partial class TerrainPointsSummaryDialog : Window
     private readonly HashSet<long> _pendingEraseHandles = [];
     private readonly Func<IReadOnlyList<TerrainPointVm>, IReadOnlyCollection<long>, string?> _applyToDrawing;
     private readonly Func<IReadOnlyList<TerrainPointVm>, IReadOnlyCollection<long>, string, string?> _buildTerrain;
-    private readonly Func<IReadOnlyList<TerrainPointVm>, string?> _savePointsToProject;
+    private readonly Func<string, IReadOnlyList<TerrainPointVm>, string?> _savePointsToProject;
     private readonly Func<Point3d?> _pickPoint;
+    private readonly Func<long?> _pickDrawingPoint;
     private readonly Func<(IReadOnlyList<string> Names, string? Active, string Suggested)> _listNamedTerrains;
     private readonly Func<string, (IReadOnlyList<TerrainPointVm>? Points, string? Error)> _loadNamedTerrain;
     private readonly bool _appendMode;
@@ -248,8 +249,9 @@ public partial class TerrainPointsSummaryDialog : Window
         bool rebuiltTin,
         Func<IReadOnlyList<TerrainPointVm>, IReadOnlyCollection<long>, string?> applyToDrawing,
         Func<IReadOnlyList<TerrainPointVm>, IReadOnlyCollection<long>, string, string?> buildTerrain,
-        Func<IReadOnlyList<TerrainPointVm>, string?> savePointsToProject,
+        Func<string, IReadOnlyList<TerrainPointVm>, string?> savePointsToProject,
         Func<Point3d?> pickPoint,
+        Func<long?> pickDrawingPoint,
         Func<(IReadOnlyList<string> Names, string? Active, string Suggested)> listNamedTerrains,
         Func<string, (IReadOnlyList<TerrainPointVm>? Points, string? Error)> loadNamedTerrain,
         string? statusHint = null,
@@ -260,6 +262,7 @@ public partial class TerrainPointsSummaryDialog : Window
         _buildTerrain = buildTerrain;
         _savePointsToProject = savePointsToProject;
         _pickPoint = pickPoint;
+        _pickDrawingPoint = pickDrawingPoint;
         _listNamedTerrains = listNamedTerrains;
         _loadNamedTerrain = loadNamedTerrain;
 
@@ -489,7 +492,7 @@ public partial class TerrainPointsSummaryDialog : Window
             Renumber();
             if (!TryApply(out var err))
             {
-                MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-INŽINJERING",
+                MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-ROADS",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
 
@@ -507,23 +510,28 @@ public partial class TerrainPointsSummaryDialog : Window
     private void OnRemovePoint(object sender, RoutedEventArgs e)
     {
         CommitGrid();
-        if (PointsGrid.SelectedItem is not TerrainPointVm row)
+        var selected = PointsGrid.SelectedItems.OfType<TerrainPointVm>().ToList();
+        if (selected.Count == 0)
         {
-            MessageBox.Show(this, "Izaberite tacku u tabeli za uklanjanje.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Izaberite jednu ili vise tacaka u tabeli (Ctrl+klik).", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        if (row.PointHandle != 0)
+        foreach (var row in selected)
         {
-            _pendingEraseHandles.Add(row.PointHandle);
+            if (row.PointHandle != 0)
+            {
+                _pendingEraseHandles.Add(row.PointHandle);
+            }
+
+            _points.Remove(row);
         }
 
-        _points.Remove(row);
         Renumber();
         if (!TryApply(out var err))
         {
-            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-INŽINJERING",
+            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -535,7 +543,7 @@ public partial class TerrainPointsSummaryDialog : Window
     {
         if (!TryApply(out var err))
         {
-            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-INŽINJERING",
+            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -545,7 +553,7 @@ public partial class TerrainPointsSummaryDialog : Window
             HintBanner.Text =
                 "Za 3DFACE teren su potrebne najmanje 3 tacke. Dodajte ili ucitajte tacke, pa pokušajte ponovo.";
             HintBanner.Visibility = Visibility.Visible;
-            MessageBox.Show(this, HintBanner.Text, "TCM-INŽINJERING",
+            MessageBox.Show(this, HintBanner.Text, "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -566,7 +574,7 @@ public partial class TerrainPointsSummaryDialog : Window
         var buildErr = _buildTerrain(_points.ToList(), _pendingEraseHandles, terrainName);
         if (buildErr is not null)
         {
-            MessageBox.Show(this, buildErr, "TCM-INŽINJERING",
+            MessageBox.Show(this, buildErr, "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             RefreshSummary(tinReady: false);
             return;
@@ -580,7 +588,7 @@ public partial class TerrainPointsSummaryDialog : Window
         MessageBox.Show(this,
             $"3DFACE teren „{terrainName}“ je napravljen / osvežen.\n" +
             "Kasnije: izaberite ime → Ucitaj teren, ili ponovo 3DFACE za izmene.",
-            "TCM-INŽINJERING", MessageBoxButton.OK, MessageBoxImage.Information);
+            "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void OnLoadNamedTerrain(object sender, RoutedEventArgs e)
@@ -588,7 +596,7 @@ public partial class TerrainPointsSummaryDialog : Window
         var name = (NamedTerrainBox.Text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name))
         {
-            MessageBox.Show(this, "Izaberite ili unesite ime terena.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Izaberite ili unesite ime terena.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -596,7 +604,7 @@ public partial class TerrainPointsSummaryDialog : Window
         var (loaded, error) = _loadNamedTerrain(name);
         if (error is not null || loaded is null)
         {
-            MessageBox.Show(this, error ?? "Teren nije pronadjen.", "TCM-INŽINJERING",
+            MessageBox.Show(this, error ?? "Teren nije pronadjen.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -605,7 +613,7 @@ public partial class TerrainPointsSummaryDialog : Window
         {
             var answer = MessageBox.Show(this,
                 $"Ucitati teren „{name}“ ({loaded.Count} tacaka)?\nTrenutni skup ({_points.Count}) ce biti zamenjen.",
-                "TCM-INŽINJERING", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                "TCM-ROADS", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (answer != MessageBoxResult.Yes)
             {
                 return;
@@ -626,7 +634,7 @@ public partial class TerrainPointsSummaryDialog : Window
         Renumber();
         if (!TryApply(out var err))
         {
-            MessageBox.Show(this, err ?? "Greska pri snimanju u crtez.", "TCM-INŽINJERING",
+            MessageBox.Show(this, err ?? "Greska pri snimanju u crtez.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -635,7 +643,7 @@ public partial class TerrainPointsSummaryDialog : Window
         ApplyPointFilters();
         MessageBox.Show(this,
             $"Ucitane tacke terena „{name}“.\nKliknite „3DFACE teren“ da osvezite TIN.",
-            "TCM-INŽINJERING", MessageBoxButton.OK, MessageBoxImage.Information);
+            "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void OnSavePoints(object sender, RoutedEventArgs e)
@@ -643,36 +651,110 @@ public partial class TerrainPointsSummaryDialog : Window
         CommitGrid();
         if (_points.Count == 0)
         {
-            MessageBox.Show(this, "Nema tacaka za snimanje.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Nema tacaka za snimanje.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var pointSetName = (NamedTerrainBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(pointSetName))
+        {
+            MessageBox.Show(this,
+                "Unesite naziv skupa tacaka (polje „Imenovani teren“) pre snimanja u projekat.",
+                "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (!TryApply(out var err))
         {
-            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-INŽINJERING",
+            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        var result = _savePointsToProject(_points.ToList());
+        var result = _savePointsToProject(pointSetName, _points.ToList());
         if (result is null)
         {
-            MessageBox.Show(this, "Nema tacaka za snimanje.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Nema tacaka za snimanje.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (result.StartsWith("ERR:", StringComparison.Ordinal))
         {
-            MessageBox.Show(this, result[4..].Trim(), "TCM-INŽINJERING",
+            MessageBox.Show(this, result[4..].Trim(), "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        MessageBox.Show(this,
-            $"Tacke snimljene (CSV).\nU drugom crtezu: Ucitaj tacke → 3DFACE teren.\n\n{result}",
-            "TCM-INŽINJERING", MessageBoxButton.OK, MessageBoxImage.Information);
+        RefreshNamedTerrainList();
+        NamedTerrainBox.Text = pointSetName;
+        MessageBox.Show(this, result, "TCM-ROADS",
+            MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void OnPickFromDrawing(object sender, RoutedEventArgs e)
+    {
+        CommitGrid();
+        Visibility = Visibility.Hidden;
+        long? handle = null;
+        try
+        {
+            handle = _pickDrawingPoint();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "TCM-ROADS",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            Visibility = Visibility.Visible;
+            Activate();
+        }
+
+        if (handle is null || handle.Value == 0)
+        {
+            return;
+        }
+
+        var row = _points.FirstOrDefault(p => p.PointHandle == handle.Value);
+        if (row is null)
+        {
+            MessageBox.Show(this,
+                "Izabrana POINT tacka nije u trenutnom skupu terena.",
+                "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Ako aktivni filter skriva red — privremeno ugasi filtere.
+        if (FilterZZeroBox?.IsChecked == true ||
+            FilterZNegBox?.IsChecked == true ||
+            FilterDevBox?.IsChecked == true)
+        {
+            if (FilterZZeroBox is not null)
+            {
+                FilterZZeroBox.IsChecked = false;
+            }
+
+            if (FilterZNegBox is not null)
+            {
+                FilterZNegBox.IsChecked = false;
+            }
+
+            if (FilterDevBox is not null)
+            {
+                FilterDevBox.IsChecked = false;
+            }
+
+            ApplyPointFilters();
+        }
+
+        PointsGrid.SelectedItem = null;
+        PointsGrid.SelectedItem = row;
+        PointsGrid.UpdateLayout();
+        PointsGrid.ScrollIntoView(row);
+        PointsGrid.Focus();
     }
 
     private void OnLoadPoints(object sender, RoutedEventArgs e)
@@ -702,14 +784,14 @@ public partial class TerrainPointsSummaryDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Ne mogu da ucitam fajl:\n{ex.Message}", "TCM-INŽINJERING",
+            MessageBox.Show(this, $"Ne mogu da ucitam fajl:\n{ex.Message}", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (loaded.Count == 0)
         {
-            MessageBox.Show(this, "Fajl ne sadrzi validne X,Y,Z tacke.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Fajl ne sadrzi validne X,Y,Z tacke.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -718,7 +800,7 @@ public partial class TerrainPointsSummaryDialog : Window
         {
             var answer = MessageBox.Show(this,
                 $"Ucitano {loaded.Count} tacaka.\nZameniti trenutni skup ({_points.Count})?",
-                "TCM-INŽINJERING", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                "TCM-ROADS", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (answer == MessageBoxResult.Cancel)
             {
                 return;
@@ -753,7 +835,7 @@ public partial class TerrainPointsSummaryDialog : Window
         Renumber();
         if (!TryApply(out var err))
         {
-            MessageBox.Show(this, err ?? "Greska pri snimanju u crtez.", "TCM-INŽINJERING",
+            MessageBox.Show(this, err ?? "Greska pri snimanju u crtez.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -761,20 +843,20 @@ public partial class TerrainPointsSummaryDialog : Window
         ApplyPointFilters();
         MessageBox.Show(this,
             $"Ucitano u crtez: {_points.Count} tacaka.\nZatim „3DFACE teren“ za TIN.",
-            "TCM-INŽINJERING", MessageBoxButton.OK, MessageBoxImage.Information);
+            "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void OnApply(object sender, RoutedEventArgs e)
     {
         if (!TryApply(out var err))
         {
-            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-INŽINJERING",
+            MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         RefreshSummary(tinReady: false);
-        MessageBox.Show(this, "Koordinate su primenjene na crtez i sacuvane.", "TCM-INŽINJERING",
+        MessageBox.Show(this, "Koordinate su primenjene na crtez i sacuvane.", "TCM-ROADS",
             MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -784,7 +866,7 @@ public partial class TerrainPointsSummaryDialog : Window
         {
             if (!TryApply(out var err))
             {
-                MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-INŽINJERING",
+                MessageBox.Show(this, err ?? "Greska pri snimanju.", "TCM-ROADS",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -793,9 +875,17 @@ public partial class TerrainPointsSummaryDialog : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "TCM-INŽINJERING",
+            MessageBox.Show(this, ex.Message, "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private void OnCloseDialog(object sender, RoutedEventArgs e)
+    {
+        // IsCancel sam po sebi ne zatvara prozor kad DataGrid ostane u edit
+        // režimu ili kad fokus "proguta" ESC/klik — zato eksplicitno zatvaramo.
+        CommitGrid();
+        SafeClose(false);
     }
 
     private void OnCellEditEnding(object sender, DataGridCellEditEndingEventArgs e)

@@ -45,7 +45,7 @@ public partial class TerrainProjectionDialog : Window
             MessageBox.Show(
                 this,
                 "Broj tačaka 3D polilinije mora biti ceo broj ≥ 2.",
-                "TCM-INŽINJERING",
+                "TCM-ROADS",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;

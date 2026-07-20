@@ -25,14 +25,14 @@ public sealed partial class RoadCommands
         {
             if (!TryResolveTerrainForProjection(ed, db, out var terrainIds, out var terrainLabel))
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Komanda otkazana / teren nije izabran.");
+                ed.WriteMessage("\nTCM-ROADS: Komanda otkazana / teren nije izabran.");
                 return;
             }
 
             var axisPick = SelectAxisEntity(ed);
             if (axisPick == ObjectId.Null)
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Komanda otkazana.");
+                ed.WriteMessage("\nTCM-ROADS: Komanda otkazana.");
                 return;
             }
 
@@ -47,7 +47,7 @@ public sealed partial class RoadCommands
                 if (!terrain.HasTerrain)
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: U izabranom terenu nema validne geometrije (Face/Mesh ili Civil Tin Surface).");
+                        "\nTCM-ROADS: U izabranom terenu nema validne geometrije (Face/Mesh ili Civil Tin Surface).");
                     tr.Commit();
                     return;
                 }
@@ -55,7 +55,7 @@ public sealed partial class RoadCommands
                 if (!TryResolveAxis(tr, db, axisPick, out axisName, out axis))
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Izaberite TCM osovinu (Line/Arc na TCM_OSOVINA) ili izvornu polylinu (SRCPL).");
+                        "\nTCM-ROADS: Izaberite TCM osovinu (Line/Arc na TCM_OSOVINA) ili izvornu polylinu (SRCPL).");
                     tr.Commit();
                     return;
                 }
@@ -66,7 +66,7 @@ public sealed partial class RoadCommands
 
             if (!TryPromptSamplingOptions(axis, edgeCrossings, out var sampling))
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Komanda otkazana.");
+                ed.WriteMessage("\nTCM-ROADS: Komanda otkazana.");
                 return;
             }
 
@@ -75,7 +75,7 @@ public sealed partial class RoadCommands
                 terrain = TerrainMeshBuilder.Build(tr, terrainIds);
                 if (!TryResolveAxis(tr, db, axisPick, out axisName, out axis))
                 {
-                    ed.WriteMessage("\nTCM-INZINJERING: Osovina nije pronadjena.");
+                    ed.WriteMessage("\nTCM-ROADS: Osovina nije pronadjena.");
                     tr.Commit();
                     return;
                 }
@@ -84,7 +84,7 @@ public sealed partial class RoadCommands
                 if (projection.Points.Count < 2)
                 {
                     ed.WriteMessage(
-                        $"\nTCM-INZINJERING: Projekcija nije uspela (hit {projection.HitCount}, miss {projection.MissCount}). " +
+                        $"\nTCM-ROADS: Projekcija nije uspela (hit {projection.HitCount}, miss {projection.MissCount}). " +
                         "Proveri da li osovina leži iznad terena u XY.");
                     tr.Commit();
                     return;
@@ -114,13 +114,13 @@ public sealed partial class RoadCommands
                     : $"preciznost {sampling.PointCount} tacaka";
 
                 ed.WriteMessage(
-                    $"\nTCM-INZINJERING: Projekcija ose '{axisName}' na teren{(string.IsNullOrWhiteSpace(terrainLabel) ? string.Empty : $" „{terrainLabel}“")} — " +
+                    $"\nTCM-ROADS: Projekcija ose '{axisName}' na teren{(string.IsNullOrWhiteSpace(terrainLabel) ? string.Empty : $" „{terrainLabel}“")} — " +
                     $"3D polilinija sa {projection.Points.Count} temena ({modeText}; hit {projection.HitCount}, miss {projection.MissCount}).");
             }
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -189,7 +189,7 @@ public sealed partial class RoadCommands
             if (terrainIds.Count == 0)
             {
                 ed.WriteMessage(
-                    $"\nTCM-INZINJERING: Teren „{selectedName}“ je snimljen, ali u crtežu nema 3DFACE. " +
+                    $"\nTCM-ROADS: Teren „{selectedName}“ je snimljen, ali u crtežu nema 3DFACE. " +
                     "Pokrenite TCMTERFACE da ga ponovo nacrtate.");
                 continue;
             }
@@ -249,7 +249,7 @@ public sealed partial class RoadCommands
         if (!isKnownTerrain)
         {
             ed.WriteMessage(
-                "\nTCM-INZINJERING: To nije element terena. Kliknite 3DFACE, border ili Tin Surface (Enter = nazad na dijalog).");
+                "\nTCM-ROADS: To nije element terena. Kliknite 3DFACE, border ili Tin Surface (Enter = nazad na dijalog).");
             tr.Commit();
             return false;
         }
@@ -406,7 +406,7 @@ public sealed partial class RoadCommands
 
         var estimated = Math.Max(2, structure + edgeCrossings);
         ed.WriteMessage(
-            $"\nTCM-INZINJERING: Duzina ose {axis.TotalLength:0.##} m. " +
+            $"\nTCM-ROADS: Duzina ose {axis.TotalLength:0.##} m. " +
             $"Pronadjeno {edgeCrossings} preseka (~{estimated} kljucnih temena).");
 
         var keywordOpts = new PromptKeywordOptions(

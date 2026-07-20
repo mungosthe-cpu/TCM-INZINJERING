@@ -3,11 +3,11 @@
   SchemaVersion="1.0"
   AutodeskProduct="BricsCAD"
   ProductType="Application"
-  Name="TCM-INZINJERING"
-  Description="TCM-INZINJERING - putevi, osovina i stacionaza."
-  AppVersion="1.1.14">
+  Name="TCM-ROADS"
+  Description="TCM-ROADS - putevi, osovina i stacionaza."
+  AppVersion="1.2.0">
   <CompanyDetails
-    Name="TCM-INZINJERING"
+    Name="TCM-ROADS"
     Url="https://github.com/mungosthe-cpu/TCM-INZINJERING"
     Email="" />
 
@@ -21,9 +21,9 @@
       AppName="TcmInzenjering"
       AppType=".NET"
       ModuleName="./Contents/net48/TcmInzenjering.Plugin.Legacy.dll"
-      AppDescription="TCM-INZINJERING - putevi i osovina"
+      AppDescription="TCM-ROADS - putevi i osovina"
       LoadOnAutoCADStartup="True">
-      <Commands GroupName="TCM-INZINJERING">
+      <Commands GroupName="TCM-ROADS">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
         <Command Global="TCMZAOUREDI" Local="TCMZAOUREDI" />
         <Command Global="TCMTERADDCLINE" Local="TCMTERADDCLINE" />
@@ -47,9 +47,9 @@
       AppName="TcmInzenjering"
       AppType=".NET"
       ModuleName="./Contents/net8/TcmInzenjering.Plugin.dll"
-      AppDescription="TCM-INZINJERING - putevi i osovina"
+      AppDescription="TCM-ROADS - putevi i osovina"
       LoadOnAutoCADStartup="True">
-      <Commands GroupName="TCM-INZINJERING">
+      <Commands GroupName="TCM-ROADS">
         <Command Global="TCMPLO2TAN" Local="TCMPLO2TAN" />
         <Command Global="TCMZAOUREDI" Local="TCMZAOUREDI" />
         <Command Global="TCMTERADDCLINE" Local="TCMTERADDCLINE" />

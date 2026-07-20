@@ -68,11 +68,11 @@ public partial class TerrainProjectionSourceDialog : Window
             {
                 MessageBox.Show(this,
                     "Nema snimljenih terena u listi.\nKoristite „Izaberi u crtezu…“ ili prvo napravite teren (TCMTERFACE).",
-                    "TCM-INŽINJERING", MessageBoxButton.OK, MessageBoxImage.Information);
+                    "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            MessageBox.Show(this, "Izaberite teren iz liste.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Izaberite teren iz liste.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }

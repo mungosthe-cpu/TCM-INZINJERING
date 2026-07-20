@@ -13,7 +13,7 @@ public sealed class Commands
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         var ed = doc.Editor;
-        ed.WriteMessage("\nTCM-INZINJERING: Zdravo! Plugin radi ispravno.");
+        ed.WriteMessage("\nTCM-ROADS: Zdravo! Plugin radi ispravno.");
     }
 
     [CommandMethod("TCMINFO", CommandFlags.Modal)]
@@ -33,7 +33,7 @@ public sealed class Commands
             // Ako WPF prozor ne moze da se otvori, ispisujemo info u komandnu liniju.
         }
 #endif
-        ed.WriteMessage($"\nTCM-INZINJERING v{PluginInfo.Version} - AutoCAD/BricsCAD plugin za puteve i osovinsku geometriju.");
+        ed.WriteMessage($"\nTCM-ROADS v{PluginInfo.Version} - AutoCAD/BricsCAD plugin za puteve i osovinsku geometriju.");
         ed.WriteMessage($"\n  Autor   : {PluginInfo.AuthorName}, {PluginInfo.AuthorCity}");
         ed.WriteMessage($"\n  Telefon : {PluginInfo.AuthorPhone}");
         ed.WriteMessage($"\n  E-mail  : {PluginInfo.AuthorEmail}");
@@ -48,10 +48,10 @@ public sealed class Commands
 #if !BRICSCAD
         PluginApplication.EnsureRibbon();
         var doc = AcApp.DocumentManager.MdiActiveDocument;
-        doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon tab je osvezen.");
+        doc.Editor.WriteMessage("\nTCM-ROADS: Ribbon tab je osvezen.");
 #else
         var doc = AcApp.DocumentManager.MdiActiveDocument;
-        doc.Editor.WriteMessage("\nTCM-INZINJERING: Ribbon nije dostupan u BricsCAD verziji. Koristite komande TCMPLO2TAN, TCMSTACOZN, TCMUPDATE.");
+        doc.Editor.WriteMessage("\nTCM-ROADS: Ribbon nije dostupan u BricsCAD verziji. Koristite komande TCMPLO2TAN, TCMSTACOZN, TCMUPDATE.");
 #endif
     }
 
@@ -60,7 +60,7 @@ public sealed class Commands
     {
 #if BRICSCAD
         AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-            "\nTCM-INZINJERING: Podesavanja nisu dostupna u BricsCAD verziji plugina.");
+            "\nTCM-ROADS: Podesavanja nisu dostupna u BricsCAD verziji plugina.");
         return;
 #else
         var doc = AcApp.DocumentManager.MdiActiveDocument;
@@ -83,7 +83,7 @@ public sealed class Commands
             var texts = Roads.CrossAxis.CrossAxisLayoutService.ApplyFontPreferences(tr, doc.Database);
             tr.Commit();
             doc.Editor.WriteMessage(
-                $"\nTCM-INZINJERING: Font stacionaze primenjen: {dialog.SelectedFontFile} ({texts} tekstova).");
+                $"\nTCM-ROADS: Font stacionaze primenjen: {dialog.SelectedFontFile} ({texts} tekstova).");
         }
 #endif
     }
@@ -97,7 +97,7 @@ public sealed class Commands
 #if BRICSCAD
         if (ed is not null)
         {
-            var opts = new PromptKeywordOptions("\nPotpuno obrisati TCM-INZINJERING iz AutoCAD-a? [Da/Ne] <Ne>: ")
+            var opts = new PromptKeywordOptions("\nPotpuno obrisati TCM-ROADS iz AutoCAD-a? [Da/Ne] <Ne>: ")
             {
                 AllowNone = true
             };
@@ -108,7 +108,7 @@ public sealed class Commands
             if (res.Status != PromptStatus.OK ||
                 !string.Equals(res.StringResult, "Da", StringComparison.OrdinalIgnoreCase))
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Deinstalacija otkazana.");
+                ed.WriteMessage("\nTCM-ROADS: Deinstalacija otkazana.");
                 return;
             }
         }
@@ -116,10 +116,10 @@ public sealed class Commands
 
         if (!PluginUninstaller.ConfirmAndStart(out var message))
         {
-            ed?.WriteMessage($"\nTCM-INZINJERING: {message}");
+            ed?.WriteMessage($"\nTCM-ROADS: {message}");
             return;
         }
 
-        ed?.WriteMessage($"\nTCM-INZINJERING: {message}");
+        ed?.WriteMessage($"\nTCM-ROADS: {message}");
     }
 }

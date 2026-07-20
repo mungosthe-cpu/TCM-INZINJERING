@@ -13,7 +13,7 @@ internal sealed class InstallerForm : Form
 
     public InstallerForm()
     {
-        Text = "TCM-INŽINJERING — Instalacija";
+        Text = "TCM-ROADS — Instalacija";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;

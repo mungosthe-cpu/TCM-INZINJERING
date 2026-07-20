@@ -91,6 +91,7 @@ internal static class TerrainDefinitionStore
         }
 
         WriteRecord(tr, db, BoundariesKey, buffer);
+        TerrainBoundaryHandleCache.Set(db, boundaries.Select(b => b.Handle));
     }
 
     public static IReadOnlyList<TerrainEdgeKey> LoadDeletedEdges(Transaction tr, Database db) =>
@@ -105,34 +106,94 @@ internal static class TerrainDefinitionStore
     public static void SaveForcedEdges(Transaction tr, Database db, IReadOnlyList<TerrainEdgeKey> edges) =>
         SaveEdges(tr, db, ForcedEdgesKey, edges);
 
-    public static void AddDeletedEdge(Transaction tr, Database db, Point3d a, Point3d b)
+    public static void AddDeletedEdge(Transaction tr, Database db, Point3d a, Point3d b) =>
+        AddDeletedEdges(tr, db, new[] { (a, b) });
+
+    /// <summary>
+    /// Batch: jednom ucita i jednom snimi DELETED/FORCED Xrecord za sve ivice.
+    /// </summary>
+    public static void AddDeletedEdges(
+        Transaction tr,
+        Database db,
+        IEnumerable<(Point3d A, Point3d B)> edges)
     {
-        var list = LoadDeletedEdges(tr, db).ToList();
-        var key = TerrainEdgeKey.Create(a, b);
-        if (!list.Any(e => e.Matches(key.A, key.B)))
+        var incoming = edges?
+            .Select(e => TerrainEdgeKey.Create(e.A, e.B))
+            .ToList() ?? [];
+        if (incoming.Count == 0)
         {
-            list.Add(key);
-            SaveDeletedEdges(tr, db, list);
+            return;
         }
 
-        // Nova brisana ivica ne sme ostati forsiranom.
-        var forced = LoadForcedEdges(tr, db).Where(e => !e.Matches(a, b)).ToList();
-        SaveForcedEdges(tr, db, forced);
+        var deleted = LoadDeletedEdges(tr, db).ToList();
+        var forced = LoadForcedEdges(tr, db).ToList();
+        var deletedChanged = false;
+        var forcedChanged = false;
+
+        foreach (var key in incoming)
+        {
+            if (!deleted.Any(e => e.Matches(key.A, key.B)))
+            {
+                deleted.Add(key);
+                deletedChanged = true;
+            }
+
+            var beforeForced = forced.Count;
+            forced.RemoveAll(e => e.Matches(key.A, key.B));
+            if (forced.Count != beforeForced)
+            {
+                forcedChanged = true;
+            }
+        }
+
+        if (deletedChanged)
+        {
+            SaveDeletedEdges(tr, db, deleted);
+        }
+
+        if (forcedChanged)
+        {
+            SaveForcedEdges(tr, db, forced);
+        }
     }
 
     public static void AddForcedEdge(Transaction tr, Database db, Point3d a, Point3d b)
+        => AddForcedEdges(tr, db, new[] { (a, b) });
+
+    /// <summary>Batch: jednom učita i upiše FORCED/DELETED za sve nove ivice.</summary>
+    public static void AddForcedEdges(
+        Transaction tr,
+        Database db,
+        IEnumerable<(Point3d A, Point3d B)> edges)
     {
         var forced = LoadForcedEdges(tr, db).ToList();
-        var key = TerrainEdgeKey.Create(a, b);
-        if (!forced.Any(e => e.Matches(key.A, key.B)))
+        var deleted = LoadDeletedEdges(tr, db).ToList();
+        var forcedChanged = false;
+        var deletedChanged = false;
+
+        foreach (var (a, b) in edges)
         {
-            forced.Add(key);
+            var key = TerrainEdgeKey.Create(a, b);
+            if (!forced.Any(e => e.Matches(key.A, key.B)))
+            {
+                forced.Add(key);
+                forcedChanged = true;
+            }
+
+            var before = deleted.Count;
+            deleted.RemoveAll(e => e.Matches(a, b));
+            deletedChanged |= deleted.Count != before;
+        }
+
+        if (forcedChanged)
+        {
             SaveForcedEdges(tr, db, forced);
         }
 
-        // Forsirana ivica ne sme ostati u deleted listi.
-        var deleted = LoadDeletedEdges(tr, db).Where(e => !e.Matches(a, b)).ToList();
-        SaveDeletedEdges(tr, db, deleted);
+        if (deletedChanged)
+        {
+            SaveDeletedEdges(tr, db, deleted);
+        }
     }
 
     public static void AddForcedEdgeAfterSwap(Transaction tr, Database db, Point3d oldA, Point3d oldB, Point3d newC, Point3d newD)

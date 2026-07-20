@@ -1,0 +1,189 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.SurveyCrossSettingsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Geodetski krstovi — podesavanja"
+        Width="560"
+        SizeToContent="Height"
+        MinWidth="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="#F7F8FA">
+  <Window.Resources>
+    <SolidColorBrush x:Key="Border" Color="#E1E5EA"/>
+    <SolidColorBrush x:Key="Blue" Color="#2563B8"/>
+    <SolidColorBrush x:Key="Green" Color="#239B68"/>
+    <SolidColorBrush x:Key="Purple" Color="#7650B5"/>
+    <Style TargetType="TextBox">
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="9,0"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="8,0"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+    </Style>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="16"/>
+    </Style>
+    <Style x:Key="FooterButton" TargetType="Button">
+      <Setter Property="Height" Value="38"/>
+      <Setter Property="Padding" Value="22,0"/>
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+  </Window.Resources>
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Margin="18,14,18,12">
+        <Border Background="#F5F8FE" BorderBrush="#D9E4F5" BorderThickness="1"
+                CornerRadius="7" Padding="12" Margin="0,0,0,14">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="ⓘ" FontSize="18" Foreground="{StaticResource Blue}" Margin="0,0,10,0"/>
+            <TextBlock Text="Definišite izgled i razmak krstova. Nakon potvrde označite pravougaonu oblast u crtežu."
+                       TextWrapping="Wrap" Foreground="#4B5563" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+              <Border Background="#EFF5FF" CornerRadius="14" Width="28" Height="28" Margin="0,0,10,0">
+                <TextBlock Text="⌖" Foreground="{StaticResource Blue}" FontSize="17"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <TextBlock Text="KOORDINATNI RASTER" Foreground="{StaticResource Blue}"
+                         FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="210"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="28"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Text="Razmak po E / X:" VerticalAlignment="Center" Margin="10,0,8,10"/>
+            <TextBox Grid.Column="1" x:Name="SpacingXBox" Text="100" Margin="0,0,0,10"/>
+            <TextBlock Grid.Column="2" Text="m" VerticalAlignment="Center" Margin="8,0,0,10"/>
+            <TextBlock Grid.Row="1" Text="Razmak po N / Y:" VerticalAlignment="Center" Margin="10,0,8,0"/>
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="SpacingYBox" Text="100"/>
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="m" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+              <Border Background="#ECF9F2" CornerRadius="14" Width="28" Height="28" Margin="0,0,10,0">
+                <TextBlock Text="+" Foreground="{StaticResource Green}" FontSize="20"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <TextBlock Text="IZGLED KRSTA" Foreground="{StaticResource Green}"
+                         FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="210"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="28"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Text="Ukupna dužina krsta:" VerticalAlignment="Center" Margin="10,0,8,10"/>
+            <TextBox Grid.Column="1" x:Name="CrossLengthBox" Text="2" Margin="0,0,0,10"/>
+            <TextBlock Grid.Column="2" Text="m" VerticalAlignment="Center" Margin="8,0,0,10"/>
+            <TextBlock Grid.Row="1" Text="Lejer:" VerticalAlignment="Center" Margin="10,0,8,10"/>
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="LayerBox" Text="TCM_GEO_KRSTOVI"
+                     Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="2" Text="Boja lejera:" VerticalAlignment="Center" Margin="10,0,8,0"/>
+            <Button Grid.Row="2" Grid.Column="1" x:Name="LayerColorBtn" Height="26"
+                    HorizontalAlignment="Stretch" Click="OnPickLayerColor"
+                    ToolTip="Klik — izbor ACI boje lejera"/>
+          </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+              <Border Background="#F2EDFB" CornerRadius="14" Width="28" Height="28" Margin="0,0,10,0">
+                <TextBlock Text="A" Foreground="{StaticResource Purple}" FontSize="16" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <TextBlock Text="KOTIRANJE KOORDINATA" Foreground="{StaticResource Purple}"
+                         FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="190"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="28"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.ColumnSpan="3" Orientation="Horizontal" Margin="10,0,0,12">
+              <CheckBox x:Name="LabelEastBox" Content="Prikazi E" IsChecked="True" Margin="0,0,22,0"
+                        ToolTip="Prikazuje istočnu koordinatu (E) pored krsta"/>
+              <CheckBox x:Name="LabelNorthBox" Content="Prikazi N" IsChecked="True"
+                        ToolTip="Prikazuje severnu koordinatu (N) pored krsta"/>
+            </StackPanel>
+            <CheckBox Grid.Row="1" Grid.ColumnSpan="3" x:Name="GroupedLabelBox"
+                      Content="Grupisani ispis (N/E u 3 cifre)"
+                      IsChecked="True" Margin="0,0,0,10"
+                      ToolTip="N vertikalno iznad krsta, E horizontalno desno; cifre u grupama od 3"/>
+            <TextBlock Grid.Row="2" Text="Font:" VerticalAlignment="Center" Margin="10,0,8,10"/>
+            <ComboBox Grid.Row="2" Grid.Column="1" x:Name="FontBox" Margin="0,0,0,10"
+                      IsEditable="True" VerticalContentAlignment="Center"/>
+            <TextBlock Grid.Row="3" Text="Boja teksta:" VerticalAlignment="Center" Margin="10,0,8,10"/>
+            <Button Grid.Row="3" Grid.Column="1" x:Name="TextColorBtn" Height="30" Margin="0,0,0,10"
+                    HorizontalAlignment="Stretch" Click="OnPickTextColor"
+                    ToolTip="Klik — izbor ACI boje teksta"/>
+            <TextBlock Grid.Row="4" Text="Visina teksta:" VerticalAlignment="Center" Margin="10,0,8,10"/>
+            <TextBox Grid.Row="4" Grid.Column="1" x:Name="TextHeightBox" Text="1.5" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="4" Grid.Column="2" Text="m" VerticalAlignment="Center" Margin="8,0,0,10"/>
+            <TextBlock Grid.Row="5" Text="Broj decimala (0–6):" VerticalAlignment="Center" Margin="10,0,8,0"/>
+            <TextBox Grid.Row="5" Grid.Column="1" x:Name="DecimalsBox" Text="2"/>
+          </Grid>
+          </StackPanel>
+        </Border>
+    </StackPanel>
+
+    <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource Border}"
+            BorderThickness="0,1,0,0" Padding="18,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="✓   OZNAČI OBLAST" Width="150" IsDefault="True"
+                Click="OnAccept" Margin="0,0,10,0"
+                Style="{StaticResource FooterButton}" Background="#1769D2" Foreground="White"/>
+        <Button Content="✕   ODUSTANI" Width="125" IsCancel="True"
+                Style="{StaticResource FooterButton}"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

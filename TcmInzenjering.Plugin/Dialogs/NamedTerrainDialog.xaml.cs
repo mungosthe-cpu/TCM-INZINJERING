@@ -37,7 +37,7 @@ public partial class NamedTerrainDialog : Window
         var name = (NameBox.Text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name))
         {
-            MessageBox.Show(this, "Unesite ime terena.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Unesite ime terena.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }

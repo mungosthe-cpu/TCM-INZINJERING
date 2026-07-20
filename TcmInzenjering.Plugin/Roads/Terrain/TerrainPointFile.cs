@@ -16,7 +16,7 @@ internal static class TerrainPointFile
     public static string Write(string path, IReadOnlyList<Point3d> points)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("# TCM-INZINJERING terrain points");
+        sb.AppendLine("# TCM-ROADS terrain points");
         sb.AppendLine("# X,Y,Z");
         foreach (var p in points)
         {

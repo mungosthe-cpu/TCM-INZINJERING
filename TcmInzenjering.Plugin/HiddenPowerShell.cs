@@ -1,21 +1,41 @@
 using System.Diagnostics;
+using System.IO;
+using System.Text;
 
 namespace TcmInzenjering.Plugin;
 
 /// <summary>
-/// Pokreće PowerShell GUI skriptu bez crnog konzolnog prozora
-/// (kao Chrome/VS Code updater: CREATE_NO_WINDOW + WinForms UI).
+/// Pokreće PowerShell GUI skriptu bez crnog konzolnog prozora.
+/// Koristi wscript.exe (WindowStyle 0) — pouzdanije od CreateNoWindow na Win10/11.
 /// </summary>
 internal static class HiddenPowerShell
 {
     public static Process? StartFile(string scriptPath)
     {
+        scriptPath = Path.GetFullPath(scriptPath);
+        var vbsPath = Path.Combine(
+            Path.GetTempPath(),
+            "TcmInzenjering-launch-" + Guid.NewGuid().ToString("N")[..10] + ".vbs");
+
+        // VBS: unutrašnji navodnici se udvostručavaju "".
+        // Primer: sh.Run "powershell.exe ... -File ""C:\temp\a.ps1""", 0, False
+        var psInner =
+            "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" +
+            scriptPath + "\"";
+        var psForVbs = psInner.Replace("\"", "\"\"");
+
+        var vbs = new StringBuilder();
+        vbs.AppendLine("Set sh = CreateObject(\"WScript.Shell\")");
+        vbs.AppendLine("sh.Run \"" + psForVbs + "\", 0, False");
+        vbs.AppendLine("WScript.Sleep 2500");
+        vbs.AppendLine("On Error Resume Next");
+        vbs.AppendLine("CreateObject(\"Scripting.FileSystemObject\").DeleteFile WScript.ScriptFullName, True");
+        File.WriteAllText(vbsPath, vbs.ToString(), Encoding.ASCII);
+
         var start = new ProcessStartInfo
         {
-            FileName = "powershell.exe",
-            Arguments =
-                "-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" +
-                scriptPath + "\"",
+            FileName = "wscript.exe",
+            Arguments = "//B //Nologo \"" + vbsPath + "\"",
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden

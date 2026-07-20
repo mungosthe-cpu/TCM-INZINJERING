@@ -112,7 +112,14 @@ internal static class RoadAxisStore
 
     public static IReadOnlyList<string> GetAxisNames(Transaction tr, Database db)
     {
-        var dictionary = GetDictionary(tr, db, OpenMode.ForRead);
+        var nod = (DBDictionary)tr.GetObject(db.NamedObjectsDictionaryId, OpenMode.ForRead);
+        if (!nod.Contains(DictionaryName))
+        {
+            return Array.Empty<string>();
+        }
+
+        var dictionary = (DBDictionary)tr.GetObject(
+            nod.GetAt(DictionaryName), OpenMode.ForRead);
         var names = new List<string>();
         foreach (var entry in dictionary)
         {
@@ -123,6 +130,30 @@ internal static class RoadAxisStore
         }
 
         return names;
+    }
+
+    public static bool Exists(Transaction tr, Database db, string axisName) =>
+        GetAxisNames(tr, db).Any(name =>
+            string.Equals(name, axisName?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    public static string GetNextAvailableName(
+        Transaction tr,
+        Database db,
+        string prefix = "OSA-")
+    {
+        var names = new HashSet<string>(
+            GetAxisNames(tr, db),
+            StringComparer.OrdinalIgnoreCase);
+        for (var index = 1; index < int.MaxValue; index++)
+        {
+            var candidate = $"{prefix}{index}";
+            if (!names.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return $"{prefix}{Guid.NewGuid():N}";
     }
 
     private static DBDictionary GetDictionary(Transaction tr, Database db, OpenMode mode)

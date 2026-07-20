@@ -31,21 +31,41 @@ public sealed partial class RoadCommands
             }
 
             double polylineLength;
+            IReadOnlyList<string> existingAxisNames;
+            string suggestedAxisName;
             using (var previewTr = db.TransactionManager.StartTransaction())
             {
                 var preview = (Polyline)previewTr.GetObject(polylineId, OpenMode.ForRead);
                 polylineLength = preview.Length;
+                existingAxisNames = RoadAxisStore.GetAxisNames(previewTr, db);
+                suggestedAxisName = RoadAxisStore.GetNextAvailableName(previewTr, db);
                 previewTr.Commit();
             }
 
 #if BRICSCAD
-            if (!LegacyPlo2TanPrompt.TryCollect(ed, polylineLength, out var axisName, out var curveRadius, out var textHeight, out var stationOptions))
+            if (!LegacyPlo2TanPrompt.TryCollect(
+                    ed,
+                    polylineLength,
+                    out var axisName,
+                    out var curveRadius,
+                    out var textHeight,
+                    out var stationOptions,
+                    suggestedAxisName))
             {
-                ed.WriteMessage("\nTCM-INZINJERING: komanda otkazana.");
+                ed.WriteMessage("\nTCM-ROADS: komanda otkazana.");
                 return;
             }
 
             using var tr = db.TransactionManager.StartTransaction();
+            if (RoadAxisStore.Exists(tr, db, axisName))
+            {
+                ed.WriteMessage(
+                    $"\nTCM-ROADS: Osovina '{axisName}' već postoji. " +
+                    $"Koristite jedinstveno ime, na primer '{suggestedAxisName}'.");
+                tr.Abort();
+                return;
+            }
+
             var polyline = (Polyline)tr.GetObject(polylineId, OpenMode.ForRead);
             var axis = PolylineToTangentConverter.Convert(polyline, curveRadius, stationOptions.StartStation, axisName);
             var modelSpace = (BlockTableRecord)tr.GetObject(
@@ -54,7 +74,12 @@ public sealed partial class RoadCommands
 
             DrawAxis(tr, modelSpace, axis, polylineId, stationOptions.AxisColorIndex);
             var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, axis, stationOptions);
-            var radiusCount = 0;
+            var radiusCount = RoadDrawing.DrawRadiusLabels(
+                tr,
+                modelSpace,
+                axis,
+                textHeight,
+                stationOptions.LabelSideSign);
             var segmentCount = stationOptions.DrawSegmentLabels
                 ? RoadDrawing.DrawSegmentLabels(
                     tr,
@@ -83,11 +108,23 @@ public sealed partial class RoadCommands
                 EndStation = polylineLength
             };
             Plo2TanDialogPreferences.ApplyTo(dialogState);
+            if (string.IsNullOrWhiteSpace(dialogState.AxisName) ||
+                existingAxisNames.Any(name =>
+                    string.Equals(
+                        name,
+                        dialogState.AxisName,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                dialogState.AxisName = suggestedAxisName;
+            }
 
             Plo2TanDialog? dialog = null;
             while (true)
             {
-                dialog = new Plo2TanDialog(polylineLength, dialogState);
+                dialog = new Plo2TanDialog(
+                    polylineLength,
+                    dialogState,
+                    existingAxisNames);
                 var accepted = AcApp.ShowModalWindow(dialog) == true;
                 if (accepted && dialog.CloseAction == Plo2TanDialogCloseAction.Confirmed)
                 {
@@ -124,12 +161,21 @@ public sealed partial class RoadCommands
 
                         continue;
                     default:
-                        ed.WriteMessage("\nTCM-INZINJERING: komanda otkazana.");
+                        ed.WriteMessage("\nTCM-ROADS: komanda otkazana.");
                         return;
                 }
             }
 
             using var tr = db.TransactionManager.StartTransaction();
+            if (RoadAxisStore.Exists(tr, db, dialog!.AxisName))
+            {
+                ed.WriteMessage(
+                    $"\nTCM-ROADS: Osovina '{dialog.AxisName}' već postoji. " +
+                    $"Pokrenite komandu ponovo i izaberite jedinstveno ime.");
+                tr.Abort();
+                return;
+            }
+
             var polyline = (Polyline)tr.GetObject(polylineId, OpenMode.ForRead);
             var fullAxis = PolylineToTangentConverter.Convert(
                 polyline,
@@ -161,7 +207,12 @@ public sealed partial class RoadCommands
 
             DrawAxis(tr, modelSpace, visibleAxis, polylineId, stationOptions.AxisColorIndex);
             var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, visibleAxis, stationOptions);
-            var radiusCount = 0;
+            var radiusCount = RoadDrawing.DrawRadiusLabels(
+                tr,
+                modelSpace,
+                visibleAxis,
+                dialog.TextHeight,
+                stationOptions.LabelSideSign);
             var segmentCount = stationOptions.DrawSegmentLabels
                 ? RoadDrawing.DrawSegmentLabels(
                     tr,
@@ -198,11 +249,11 @@ public sealed partial class RoadCommands
         }
         catch (Autodesk.AutoCAD.Runtime.Exception acEx)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {acEx.Message} ({acEx.ErrorStatus})");
+            ed.WriteMessage($"\nTCM-ROADS greska: {acEx.Message} ({acEx.ErrorStatus})");
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
             if (ex.InnerException is not null)
             {
                 ed.WriteMessage($" ({ex.InnerException.Message})");
@@ -261,7 +312,7 @@ public sealed partial class RoadCommands
         var labelCount = RoadDrawing.DrawStationLabels(tr, modelSpace, axis, interval.Value, RoadDrawing.DefaultTickLength, 2.5, "STA ");
         tr.Commit();
 
-        ed.WriteMessage($"\nTCM-INZINJERING: Iscrtano {labelCount} oznaka stacionaze.");
+        ed.WriteMessage($"\nTCM-ROADS: Iscrtano {labelCount} oznaka stacionaze.");
     }
 
     [CommandMethod("TCMSTACAZUR", CommandFlags.Modal)]
@@ -282,11 +333,11 @@ public sealed partial class RoadCommands
             using var tr = db.TransactionManager.StartTransaction();
             var count = StationLabelService.RefreshAxis(tr, db, axisName);
             tr.Commit();
-            ed.WriteMessage($"\nTCM-INZINJERING: Azurirana geometrija i {count} oznaka stacionaze za '{axisName}'.");
+            ed.WriteMessage($"\nTCM-ROADS: Azurirana geometrija i {count} oznaka stacionaze za '{axisName}'.");
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
             if (ex.InnerException is not null)
             {
                 ed.WriteMessage($" ({ex.InnerException.Message})");
@@ -364,8 +415,7 @@ public sealed partial class RoadCommands
         var ed = doc.Editor;
         var db = doc.Database;
 
-        var axisName = PromptString(ed, "\nIme osovine za tabelu <OS-1>: ", "OS-1");
-        if (axisName is null)
+        if (!TryChooseAxis(ed, db, out var axisName, out var axis))
         {
             return;
         }
@@ -382,14 +432,7 @@ public sealed partial class RoadCommands
             var metadata = RoadAxisStore.Load(tr, db, axisName);
             if (metadata is null)
             {
-                ed.WriteMessage($"\nTCM-INZINJERING: osovina '{axisName}' nije pronadjena.");
-                return;
-            }
-
-            var axis = AxisGeometryReader.ReadAxis(tr, db, axisName, metadata.StartStation);
-            if (axis is null)
-            {
-                ed.WriteMessage($"\nTCM-INZINJERING: nema nacrtane osovine '{axisName}'.");
+                ed.WriteMessage($"\nTCM-ROADS: osovina '{axisName}' nije pronadjena.");
                 return;
             }
 
@@ -403,11 +446,11 @@ public sealed partial class RoadCommands
                 pointResult.Value,
                 metadata.TextHeight);
             tr.Commit();
-            ed.WriteMessage($"\nTCM-INZINJERING: Ubacena tabela osovine '{axisName}' ({count} elemenata).");
+            ed.WriteMessage($"\nTCM-ROADS: Ubacena tabela osovine '{axisName}' ({count} elemenata).");
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -434,7 +477,7 @@ public sealed partial class RoadCommands
             {
                 if (pl.NumberOfVertices < 2)
                 {
-                    ed.WriteMessage("\nTCM-INZINJERING: polilinija mora imati bar 2 temena.");
+                    ed.WriteMessage("\nTCM-ROADS: polilinija mora imati bar 2 temena.");
                     tr.Commit();
                     return ObjectId.Null;
                 }
@@ -449,11 +492,11 @@ public sealed partial class RoadCommands
                 tr.Commit();
                 if (convertedId.IsNull)
                 {
-                    ed.WriteMessage("\nTCM-INZINJERING: nije uspela konverzija POLYLINE u LWPOLYLINE.");
+                    ed.WriteMessage("\nTCM-ROADS: nije uspela konverzija POLYLINE u LWPOLYLINE.");
                 }
                 else
                 {
-                    ed.WriteMessage("\nTCM-INZINJERING: stara POLYLINE je konvertovana u LWPOLYLINE.");
+                    ed.WriteMessage("\nTCM-ROADS: stara POLYLINE je konvertovana u LWPOLYLINE.");
                 }
 
                 return convertedId;
@@ -464,7 +507,7 @@ public sealed partial class RoadCommands
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING: izbor polilinije nije uspeo — {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS: izbor polilinije nije uspeo — {ex.Message}");
             return ObjectId.Null;
         }
     }
@@ -594,7 +637,7 @@ public sealed partial class RoadCommands
         int segmentCount = 0,
         int nodeCount = 0)
     {
-        ed.WriteMessage($"\nTCM-INZINJERING: Osovina '{axis.Name}' kreirana.");
+        ed.WriteMessage($"\nTCM-ROADS: Osovina '{axis.Name}' kreirana.");
         ed.WriteMessage($"\n  Pocetna stacionaza : {RoadDrawing.FormatStation(axis.StartStation, string.Empty)}");
         ed.WriteMessage($"\n  Krajnja stacionaza  : {RoadDrawing.FormatStation(axis.Elements[^1].EndStation, string.Empty)}");
         ed.WriteMessage($"\n  Ukupna duzina       : {axis.TotalLength:F2} m");

@@ -69,7 +69,7 @@
               CanUserAddRows="False"
               CanUserDeleteRows="False"
               HeadersVisibility="Column"
-              SelectionMode="Single"
+              SelectionMode="Extended"
               SelectionUnit="FullRow"
               GridLinesVisibility="Horizontal"
               AlternatingRowBackground="{x:Null}"
@@ -111,11 +111,12 @@
       </DataGrid.Columns>
     </DataGrid>
 
-    <WrapPanel Grid.Row="2" Margin="0,10,0,0">
+    <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="False">
       <Button x:Name="FolderIconButton"
+              DockPanel.Dock="Left"
               Width="36" Height="28" Margin="0,0,8,0" Padding="0"
               BorderThickness="0" Background="Transparent"
-              Cursor="Hand"
+              Cursor="Hand" VerticalAlignment="Center"
               ToolTip="Folder projekta (default za snimanje / ucitavanje tacaka)"
               Click="OnPickProjectFolder"
               Focusable="False">
@@ -140,20 +141,31 @@
           </Canvas>
         </Viewbox>
       </Button>
-      <Button Content="Dodaj tacku" Width="110" Height="28" Margin="0,0,8,0" Click="OnAddPoint"/>
-      <Button Content="Ukloni tacku" Width="110" Height="28" Margin="0,0,8,0" Click="OnRemovePoint"/>
-      <Button Content="3DFACE teren" Width="120" Height="28" Margin="0,0,8,0" Click="OnBuildTerrain"
-              ToolTip="Pravi TIN (3DFACE) i snima teren pod imenom"/>
-      <Button Content="Snimi tacke" Width="110" Height="28" Margin="0,0,8,0" Click="OnSavePoints"
-              ToolTip="Snima XYZ tacke (CSV) u folder projekta — bez DWG"/>
-      <Button Content="Ucitaj tacke" Width="110" Height="28" Margin="0,0,8,0" Click="OnLoadPoints"
+      <Button DockPanel.Dock="Left" Content="Ucitaj tacke" Width="110" Height="28" Margin="0,0,8,0"
+              VerticalAlignment="Center" Click="OnLoadPoints"
               ToolTip="Ucitava XYZ CSV/TXT u ovaj crtez"/>
-    </WrapPanel>
+      <Button DockPanel.Dock="Left" Content="Dodaj tacku" Width="110" Height="28" Margin="0,0,8,0"
+              VerticalAlignment="Center" Click="OnAddPoint"/>
+      <Button DockPanel.Dock="Left" Content="Ukloni tacke" Width="110" Height="28" Margin="0,0,8,0"
+              VerticalAlignment="Center" Click="OnRemovePoint"
+              ToolTip="Uklanja sve izabrane tacke (Ctrl+klik za vise)"/>
+      <Button DockPanel.Dock="Left" Content="3DFACE teren" Width="120" Height="28" Margin="0,0,8,0"
+              VerticalAlignment="Center" Click="OnBuildTerrain"
+              ToolTip="Pravi TIN (3DFACE) i snima teren pod imenom"/>
+      <Button DockPanel.Dock="Left" Content="Snimi u projekat" Width="130" Height="28" Margin="0,0,8,0"
+              VerticalAlignment="Center" Click="OnSavePoints"
+              ToolTip="Snima imenovani skup tacaka u crtez i aktivni TCM projekat"/>
+    </DockPanel>
 
-    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-      <Button Content="Primeni" Width="96" Height="28" Click="OnApply" Margin="0,0,8,0"/>
-      <Button Content="OK" Width="96" Height="28" IsDefault="True" Click="OnOk" Margin="0,0,8,0"/>
-      <Button Content="Zatvori" Width="96" Height="28" IsCancel="True"/>
-    </StackPanel>
+    <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
+      <Button DockPanel.Dock="Left" Content="Pronadji u crtezu" Width="140" Height="28"
+              Click="OnPickFromDrawing"
+              ToolTip="Sakriva dijalog, birate POINT u crtezu, pa se red oznaci u tabeli"/>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Primeni" Width="96" Height="28" Click="OnApply" Margin="0,0,8,0"/>
+        <Button Content="OK" Width="96" Height="28" IsDefault="True" Click="OnOk" Margin="0,0,8,0"/>
+        <Button Content="Zatvori" Width="96" Height="28" IsCancel="True" Click="OnCloseDialog"/>
+      </StackPanel>
+    </DockPanel>
   </Grid>
 </Window>

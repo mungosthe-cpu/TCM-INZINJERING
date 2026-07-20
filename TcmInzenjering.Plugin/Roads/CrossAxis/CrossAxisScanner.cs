@@ -8,12 +8,13 @@ internal static class CrossAxisScanner
 
     public static IReadOnlyList<CrossAxisInfo> Scan(Transaction tr, Database db)
     {
-        var modelSpace = (BlockTableRecord)tr.GetObject(
-            SymbolUtilityServices.GetBlockModelSpaceId(db),
-            OpenMode.ForRead);
-
+        var ids = RoadEntityIndex.GetCrossAxes(tr, db);
         var axes = new List<CrossAxisInfo>();
-        foreach (ObjectId id in modelSpace)
+        IEnumerable<ObjectId> source = ids.Count > 0
+            ? ids
+            : EnumerateModelSpace(tr, db);
+
+        foreach (ObjectId id in source)
         {
             if (id.IsErased)
             {
@@ -53,6 +54,17 @@ internal static class CrossAxisScanner
             .OrderBy(axis => axis.Station)
             .ThenBy(axis => axis.Number)
             .ToList();
+    }
+
+    private static IEnumerable<ObjectId> EnumerateModelSpace(Transaction tr, Database db)
+    {
+        var modelSpace = (BlockTableRecord)tr.GetObject(
+            SymbolUtilityServices.GetBlockModelSpaceId(db),
+            OpenMode.ForRead);
+        foreach (ObjectId id in modelSpace)
+        {
+            yield return id;
+        }
     }
 
     public static int GetNextNumber(Transaction tr, Database db)

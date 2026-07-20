@@ -22,8 +22,8 @@ public sealed partial class RoadCommands
     [CommandMethod("TCMPODTAB", CommandFlags.Modal)]
     public void DrawLongitudinalProfileTable()
     {
-        // Isti tok kao CRT — kompletan view (CGSA Unos terena).
-        DrawProfileCore(includeTerrainInMessage: true);
+        // Samo tabela + mreža + niveleta (bez linije terena) — razlikuje se od TCMPODCRT.
+        DrawProfileCore(includeTerrainInMessage: false, drawTerrain: false);
     }
 
     [CommandMethod("TCMPODTER", CommandFlags.Modal)]
@@ -60,7 +60,7 @@ public sealed partial class RoadCommands
                     !TryResolveProfileView(tr, db, entity, out view!))
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Objekat nije TCM tabela profila. Prvo TCMPODCRT.");
+                        "\nTCM-ROADS: Objekat nije TCM tabela profila. Prvo TCMPODCRT.");
                     tr.Commit();
                     return;
                 }
@@ -73,7 +73,7 @@ public sealed partial class RoadCommands
                 if (!ProfileProjectedSampler.TryLoadSamples(tr, db, view.AxisName, out var samples))
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema projektovane 3D nivelete. Prvo TCMPROJTER.");
+                        "\nTCM-ROADS: Nema projektovane 3D nivelete. Prvo TCMPROJTER.");
                     tr.Commit();
                     return;
                 }
@@ -87,17 +87,17 @@ public sealed partial class RoadCommands
 
                 ed.WriteMessage(
                     id.IsNull
-                        ? "\nTCM-INZINJERING: Linija terena nije nacrtana."
-                        : $"\nTCM-INZINJERING: Teren u profilu — {samples.Count} tacaka.");
+                        ? "\nTCM-ROADS: Linija terena nije nacrtana."
+                        : $"\nTCM-ROADS: Teren u profilu — {samples.Count} tacaka.");
             }
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
-    private static void DrawProfileCore(bool includeTerrainInMessage)
+    private static void DrawProfileCore(bool includeTerrainInMessage, bool drawTerrain = true)
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
         if (doc is null)
@@ -121,7 +121,7 @@ public sealed partial class RoadCommands
                 if (!ProfileProjectedSampler.TryLoadSamples(tr, db, axisName, out samples))
                 {
                     ed.WriteMessage(
-                        "\nTCM-INZINJERING: Nema projektovane 3D nivelete. Prvo TCMPROJTER.");
+                        "\nTCM-ROADS: Nema projektovane 3D nivelete. Prvo TCMPROJTER.");
                     tr.Commit();
                     return;
                 }
@@ -190,18 +190,18 @@ public sealed partial class RoadCommands
                 var modelSpace = (BlockTableRecord)tr.GetObject(
                     SymbolUtilityServices.GetBlockModelSpaceId(db),
                     OpenMode.ForWrite);
-                ProfileDrawing.DrawFullProfile(tr, modelSpace, view, samples);
+                ProfileDrawing.DrawFullProfile(tr, modelSpace, view, samples, drawTerrain);
                 tr.Commit();
             }
 
             ed.WriteMessage(
                 includeTerrainInMessage
-                    ? $"\nTCM-INZINJERING: Poduzni profil '{opts.TableName}' — tabela + teren ({samples.Count} tacaka)."
-                    : $"\nTCM-INZINJERING: Tabela profila '{opts.TableName}'.");
+                    ? $"\nTCM-ROADS: Poduzni profil '{opts.TableName}' — tabela + teren ({samples.Count} tacaka)."
+                    : $"\nTCM-ROADS: Tabela profila '{opts.TableName}' (bez linije terena). Dodajte TCMPODTER ili TCMPODCRT.");
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
         }
     }
 
@@ -236,7 +236,7 @@ public sealed partial class RoadCommands
         catch (System.Exception ex)
         {
             var ed = AcApp.DocumentManager.MdiActiveDocument?.Editor;
-            ed?.WriteMessage($"\nTCM-INZINJERING: Dijalog Unos terena nije otvoren: {ex.Message}");
+            ed?.WriteMessage($"\nTCM-ROADS: Dijalog Unos terena nije otvoren: {ex.Message}");
             return false;
         }
 #endif
@@ -364,7 +364,7 @@ public sealed partial class RoadCommands
             tr.Commit();
             if (loaded is null || loaded.Elements.Count == 0)
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Osovina nije dostupna u memoriji.");
+                ed.WriteMessage("\nTCM-ROADS: Osovina nije dostupna u memoriji.");
                 return false;
             }
 
@@ -373,7 +373,7 @@ public sealed partial class RoadCommands
         }
 
         tr.Commit();
-        ed.WriteMessage("\nTCM-INZINJERING: Nije TCM osovina / projekcija.");
+        ed.WriteMessage("\nTCM-ROADS: Nije TCM osovina / projekcija.");
         return false;
     }
 }

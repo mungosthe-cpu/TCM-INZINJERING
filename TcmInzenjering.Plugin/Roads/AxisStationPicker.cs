@@ -1,7 +1,9 @@
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.GraphicsInterface;
 
 namespace TcmInzenjering.Plugin.Roads;
 
@@ -12,7 +14,9 @@ internal static class AxisStationPicker
         RoadAxis axis,
         RoadAxisMetadata? metadata,
         string prompt,
-        out double station)
+        out double station,
+        double? previewLeft = null,
+        double? previewRight = null)
     {
         station = 0;
         if (doc is null || axis.Elements.Count == 0)
@@ -22,51 +26,48 @@ internal static class AxisStationPicker
 
         using var docLock = doc.LockDocument();
         var ed = doc.Editor;
-        var db = doc.Database;
+        var left = previewLeft ?? ResolvePreviewHalf(metadata);
+        var right = previewRight ?? left;
+        var startStation = metadata?.StartStation ?? axis.StartStation;
+        var chainageFormat = metadata?.ChainageFormat ?? ChainageFormatter.DefaultFormat;
 
-        var pointOptions = new PromptPointOptions($"\n{prompt}")
-        {
-            AllowNone = false
-        };
+        var jig = new CrossAxisStationJig(
+            axis,
+            left,
+            right,
+            startStation,
+            chainageFormat,
+            prompt,
+            allowNone: false);
 
-        var pointResult = ed.GetPoint(pointOptions);
-        if (pointResult.Status != PromptStatus.OK)
+        var result = ed.Drag(jig);
+        if (result.Status != PromptStatus.OK)
         {
             return false;
         }
 
-        // Uvek projektuj na geometriju osovine (tangente/lukove), ne na izvornu poliliniju.
-        if (TryFindStationAtPoint(axis, pointResult.Value, out station))
+        station = jig.Station;
+
+        // Fallback ako jig nije uspeo da projektuje — stara putanja.
+        if (station <= axis.StartStation - 1e-6 &&
+            TryFindStationAtPoint(axis, jig.Cursor, out var fallback))
         {
-            return true;
+            station = fallback;
         }
 
-        using var tr = db.TransactionManager.StartTransaction();
-        if (metadata?.HasSourcePolyline == true &&
-            AxisPolylineResolver.TryResolve(db, metadata.SourcePolylineHandle, out var polylineId) &&
-            tr.GetObject(polylineId, OpenMode.ForRead) is Polyline polyline)
-        {
-            var closest = polyline.GetClosestPointTo(pointResult.Value, false);
-            var distanceAlong = polyline.GetDistAtPoint(closest);
-            if (!double.IsNaN(distanceAlong) && !double.IsInfinity(distanceAlong))
-            {
-                station = AxisStationMapper.MapPolylineDistanceToAxisStation(polyline, axis, distanceAlong);
-                tr.Commit();
-                return true;
-            }
-        }
-
-        tr.Commit();
-        return false;
+        return true;
     }
 
     /// <summary>
-    /// Više tačaka u crtežu; Enter završava izbor.
+    /// Više tačaka u crtežu; Enter završava izbor. Tokom pomeranja miša vidi se poprečna osa + stacionaža.
     /// </summary>
     public static int TryPickMultipleStations(
         Document doc,
         RoadAxis axis,
-        out List<double> stations)
+        out List<double> stations,
+        RoadAxisMetadata? metadata = null,
+        double? previewLeft = null,
+        double? previewRight = null)
     {
         stations = new List<double>();
         if (doc is null || axis.Elements.Count == 0)
@@ -76,37 +77,42 @@ internal static class AxisStationPicker
 
         using var docLock = doc.LockDocument();
         var ed = doc.Editor;
+        var left = previewLeft ?? ResolvePreviewHalf(metadata);
+        var right = previewRight ?? left;
+        var startStation = metadata?.StartStation ?? axis.StartStation;
+        var chainageFormat = metadata?.ChainageFormat ?? ChainageFormatter.DefaultFormat;
 
         while (true)
         {
-            var pointOptions = new PromptPointOptions(
-                "\nIzaberite položaj poprečne ose (Enter za povratak u prozor): ")
-            {
-                AllowNone = true
-            };
+            var jig = new CrossAxisStationJig(
+                axis,
+                left,
+                right,
+                startStation,
+                chainageFormat,
+                "Izaberite položaj poprečne ose (Enter = kraj):",
+                allowNone: true);
 
-            var pointResult = ed.GetPoint(pointOptions);
-            if (pointResult.Status == PromptStatus.None)
+            var result = ed.Drag(jig);
+            if (jig.NoneAccepted)
             {
                 break;
             }
 
-            if (pointResult.Status == PromptStatus.Cancel)
+            if (result.Status == PromptStatus.Cancel)
             {
                 stations.Clear();
                 return 0;
             }
 
-            if (pointResult.Status != PromptStatus.OK)
+            if (result.Status != PromptStatus.OK)
             {
                 continue;
             }
 
-            if (TryFindStationAtPoint(axis, pointResult.Value, out var station))
-            {
-                station = Math.Max(axis.StartStation, Math.Min(station, axis.Elements[^1].EndStation));
-                stations.Add(station);
-            }
+            var station = Math.Max(axis.StartStation, Math.Min(jig.Station, axis.Elements[^1].EndStation));
+            stations.Add(station);
+            ed.WriteMessage($"\nTCM-ROADS: Dodata stacionaža {FormatStationLabel(station, startStation, chainageFormat)}.");
         }
 
         return stations.Count;
@@ -134,6 +140,168 @@ internal static class AxisStationPicker
         }
 
         return found;
+    }
+
+    private static double ResolvePreviewHalf(RoadAxisMetadata? metadata)
+    {
+        if (metadata is { TickLength: > 1e-6 })
+        {
+            return Math.Max(0.1, metadata.TickLength * 0.5);
+        }
+
+        StationFontPreferences.Load();
+        return Math.Max(0.1, StationFontPreferences.CrossAxisLeftLength);
+    }
+
+    private static string FormatStationLabel(double station, double startStation, int chainageFormat) =>
+        ChainageFormatter.Format(Math.Max(0, station - startStation), chainageFormat);
+
+    private sealed class CrossAxisStationJig : DrawJig
+    {
+        private readonly RoadAxis _axis;
+        private readonly double _left;
+        private readonly double _right;
+        private readonly double _startStation;
+        private readonly int _chainageFormat;
+        private readonly string _prompt;
+        private readonly bool _allowNone;
+        private Point3d _cursor;
+        private bool _hasGeometry;
+        private bool _noneAccepted;
+
+        public double Station { get; private set; }
+        public Point3d Cursor => _cursor;
+        public bool NoneAccepted => _noneAccepted;
+
+        public CrossAxisStationJig(
+            RoadAxis axis,
+            double left,
+            double right,
+            double startStation,
+            int chainageFormat,
+            string prompt,
+            bool allowNone)
+        {
+            _axis = axis;
+            _left = Math.Max(0.1, left);
+            _right = Math.Max(0.1, right);
+            _startStation = startStation;
+            _chainageFormat = chainageFormat;
+            _prompt = prompt;
+            _allowNone = allowNone;
+            Station = axis.StartStation;
+        }
+
+        protected override SamplerStatus Sampler(JigPrompts prompts)
+        {
+            var label = _hasGeometry
+                ? FormatStationLabel(Station, _startStation, _chainageFormat)
+                : "—";
+            var options = new JigPromptPointOptions($"\n{_prompt}  [{label}]")
+            {
+                UserInputControls = UserInputControls.Accept3dCoordinates
+            };
+            if (_allowNone)
+            {
+                options.UserInputControls |= UserInputControls.NullResponseAccepted;
+            }
+
+            var result = prompts.AcquirePoint(options);
+            if (result.Status == PromptStatus.None)
+            {
+                _noneAccepted = true;
+                return SamplerStatus.Cancel;
+            }
+
+            if (result.Status == PromptStatus.Cancel)
+            {
+                return SamplerStatus.Cancel;
+            }
+
+            if (result.Status != PromptStatus.OK)
+            {
+                return SamplerStatus.NoChange;
+            }
+
+            if (_cursor.DistanceTo(result.Value) < 1e-9)
+            {
+                return SamplerStatus.NoChange;
+            }
+
+            _cursor = result.Value;
+            if (TryFindStationAtPoint(_axis, _cursor, out var station))
+            {
+                Station = Math.Max(
+                    _axis.StartStation,
+                    Math.Min(station, _axis.Elements[^1].EndStation));
+                _hasGeometry = true;
+            }
+            else
+            {
+                _hasGeometry = false;
+            }
+
+            return SamplerStatus.OK;
+        }
+
+        protected override bool WorldDraw(WorldDraw draw)
+        {
+            if (!_hasGeometry)
+            {
+                return true;
+            }
+
+            var point = _axis.GetPointAtStation(Station);
+            var direction = _axis.SampleDirectionAtStation(Station);
+            if (point is null || direction is null || direction.Value.Length < 1e-9)
+            {
+                return true;
+            }
+
+            var roadDir = direction.Value.GetNormal();
+            var leftNormal = new Vector3d(-roadDir.Y, roadDir.X, 0);
+            if (leftNormal.Length < 1e-9)
+            {
+                return true;
+            }
+
+            leftNormal = leftNormal.GetNormal();
+            var start = point.Value - leftNormal * _right;
+            var end = point.Value + leftNormal * _left;
+            var geometry = draw.Geometry;
+            if (geometry is null)
+            {
+                return true;
+            }
+
+            var line = new Line(start, end)
+            {
+                Color = Color.FromColorIndex(ColorMethod.ByAci, 3)
+            };
+            var label = FormatStationLabel(Station, _startStation, _chainageFormat);
+            var textPos = end + leftNormal * Math.Max(1.0, _left * 0.05);
+            var text = new DBText
+            {
+                Position = textPos,
+                Height = Math.Max(1.0, Math.Min(_left, _right) * 0.12),
+                TextString = label,
+                Color = Color.FromColorIndex(ColorMethod.ByAci, 3),
+                Rotation = Math.Atan2(roadDir.Y, roadDir.X)
+            };
+
+            try
+            {
+                geometry.Draw(line);
+                geometry.Draw(text);
+            }
+            finally
+            {
+                line.Dispose();
+                text.Dispose();
+            }
+
+            return true;
+        }
     }
 
     private static bool TryClosestOnElement(
@@ -204,64 +372,6 @@ internal static class AxisStationPicker
         }
 
         return found;
-    }
-
-    private static double StationAlongArc(AlignmentElement element, Point3d pointOnArc)
-    {
-        var startVec = element.Start - element.Center;
-        var endVec = element.End - element.Center;
-        var pointVec = pointOnArc - element.Center;
-        var startAngle = Math.Atan2(startVec.Y, startVec.X);
-        var endAngle = Math.Atan2(endVec.Y, endVec.X);
-        var pointAngle = Math.Atan2(pointVec.Y, pointVec.X);
-        var ratio = SweepRatio(startAngle, pointAngle, element.Clockwise, startAngle, endAngle, element.Clockwise);
-        return element.StartStation + ratio * element.Length;
-    }
-
-    private static double SweepRatio(
-        double arcStartAngle,
-        double targetAngle,
-        bool clockwise,
-        double startAngle,
-        double endAngle,
-        bool arcClockwise)
-    {
-        arcStartAngle = Normalize(arcStartAngle);
-        targetAngle = Normalize(targetAngle);
-        if (clockwise)
-        {
-            if (targetAngle > arcStartAngle)
-            {
-                targetAngle -= Math.PI * 2;
-            }
-        }
-        else if (targetAngle < arcStartAngle)
-        {
-            targetAngle += Math.PI * 2;
-        }
-
-        startAngle = Normalize(startAngle);
-        endAngle = Normalize(endAngle);
-        if (arcClockwise)
-        {
-            if (endAngle > startAngle)
-            {
-                endAngle -= Math.PI * 2;
-            }
-
-            var total = startAngle - endAngle;
-            var swept = startAngle - targetAngle;
-            return total < 1e-9 ? 0 : Math.Max(0, Math.Min(1, swept / total));
-        }
-
-        if (endAngle < startAngle)
-        {
-            endAngle += Math.PI * 2;
-        }
-
-        var totalCcw = endAngle - startAngle;
-        var sweptCcw = targetAngle - startAngle;
-        return totalCcw < 1e-9 ? 0 : Math.Max(0, Math.Min(1, sweptCcw / totalCcw));
     }
 
     private static Point3d? SamplePointOnElement(AlignmentElement element, double ratio)

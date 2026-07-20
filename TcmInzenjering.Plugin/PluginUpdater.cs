@@ -36,7 +36,7 @@ internal static class PluginUpdater
         try
         {
             var version = result.LatestVersion ?? "latest";
-            var setupPath = Path.Combine(Path.GetTempPath(), $"TCM-INZINJERING-Setup-{version}.exe");
+            var setupPath = Path.Combine(Path.GetTempPath(), $"TCM-ROADS-Setup-{version}.exe");
             var metaPath = Path.Combine(Path.GetTempPath(), "TcmInzenjering-update-meta.json");
             var scriptPath = Path.Combine(Path.GetTempPath(), "TcmInzenjering-update.ps1");
 
@@ -54,9 +54,9 @@ internal static class PluginUpdater
             HiddenPowerShell.StartFile(scriptPath);
 
             message =
-                "Pokrenut je prozor preuzimanja. Nastavite rad u AutoCAD-u." +
+                "Pokrenut je prozor preuzimanja (bez crne konzole)." +
                 Environment.NewLine +
-                "Instalacija ce se automatski zavrsiti kada zatvorite AutoCAD (nema potrebe da ga gasite odmah).";
+                "Mozete nastaviti rad. Kad zatvorite AutoCAD, instalacija ce krenuti sama.";
             return true;
         }
         catch (Exception ex)
@@ -74,7 +74,7 @@ internal static class PluginUpdater
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
 Add-Type -AssemblyName System.Drawing | Out-Null
 $ErrorActionPreference = "Stop"
-$title = "TCM-INZINJERING - Nadogradnja"
+$title = "TCM-ROADS - Nadogradnja"
 $metaPath = '{{escapedMeta}}'
 $nl = [Environment]::NewLine
 $script:CancelWait = $false
@@ -153,7 +153,7 @@ $label.Dock = "Top"
 $label.Height = 36
 $label.ForeColor = [System.Drawing.Color]::White
 $label.BackColor = [System.Drawing.Color]::Transparent
-$label.Text = "Preuzimanje TCM-INZINJERING v$version..."
+$label.Text = "Preuzimanje TCM-ROADS v$version..."
 
 $bar = New-Object System.Windows.Forms.ProgressBar
 $bar.Dock = "Top"
@@ -303,30 +303,26 @@ if ($running.Count -gt 0) {
 $form.WindowState = "Normal"
 $form.Activate()
 $cancelBtn.Visible = $false
-$label.Text = "Instalacija u toku..."
-$status.Text = "AutoCAD je zatvoren. Kopiranje fajlova..."
+$label.Text = "Pokrecem instalaciju..."
+$status.Text = "AutoCAD je zatvoren — instalacija kreće automatski (bez dodatnog klika)."
 $bar.Style = "Marquee"
 $bar.MarqueeAnimationSpeed = 30
 [System.Windows.Forms.Application]::DoEvents()
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 1
 
 try {
-  # WinExe installer — bez nove konzole.
-  $p = Start-Process -FilePath $setup -ArgumentList "--silent" -WindowStyle Normal -PassThru -Wait
-  if ($p.ExitCode -ne 0) {
-    try { $form.Close() } catch { }
-    Show-Msg ("Instalacija nije uspela (exit $($p.ExitCode))." + $nl + "Pokrenite installer rucno:" + $nl + $setup) "Error"
-    exit $p.ExitCode
-  }
-
+  # --auto: prikazuje branded setup, čeka CAD ako treba, instalira, zatvara se sam.
+  # Ne koristimo --silent (bez UI) — to je zbunjivalo korisnike.
+  $p = Start-Process -FilePath $setup -ArgumentList "--auto" -WindowStyle Normal -PassThru
+  # Predaj UI installeru; zatvori ovaj wait prozor.
   try { $form.Close() } catch { }
-  $msg = "Uspesno instalirano: TCM-INZINJERING v$version"
-  if ($current) { $msg += $nl + "Prethodna verzija: v$current" }
-  if ($notes) {
-    $msg += $nl + $nl + "Sta je novo:" + $nl + $notes
+  if ($null -ne $p) {
+    $p.WaitForExit()
+    if ($p.ExitCode -ne 0) {
+      Show-Msg ("Instalacija nije uspela (exit $($p.ExitCode))." + $nl + "Pokrenite installer rucno:" + $nl + $setup) "Error"
+      exit $p.ExitCode
+    }
   }
-  $msg += $nl + $nl + "Pokrenite AutoCAD/BricsCAD ponovo da se ucita nova verzija."
-  Show-Msg $msg "Info"
 } catch {
   try { $form.Close() } catch { }
   Show-Msg ("Greska pri pokretanju instalera:" + $nl + $_.Exception.Message + $nl + $nl + $setup) "Error"

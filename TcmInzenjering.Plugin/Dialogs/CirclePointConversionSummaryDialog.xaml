@@ -1,0 +1,60 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.CirclePointConversionSummaryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TCM-ROADS — Krugovi u tacke, izvestaj"
+        Width="620" Height="700"
+        MinWidth="540" MinHeight="580"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <ScrollViewer Grid.Row="0" MaxHeight="120"
+                  VerticalScrollBarVisibility="Auto" Margin="0,0,0,12">
+      <TextBlock x:Name="SummaryText" FontSize="13" TextWrapping="Wrap"/>
+    </ScrollViewer>
+
+    <Grid Grid.Row="1" Margin="0,0,0,10">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock Text="Naziv grupe tacaka:" VerticalAlignment="Center"
+                 FontWeight="SemiBold" Margin="0,0,10,0"/>
+      <TextBox Grid.Column="1" x:Name="GroupNameBox" Height="28"
+               VerticalContentAlignment="Center"/>
+    </Grid>
+
+    <DataGrid x:Name="PointsGrid" Grid.Row="2"
+              AutoGenerateColumns="False"
+              IsReadOnly="True"
+              CanUserAddRows="False"
+              HeadersVisibility="Column"
+              GridLinesVisibility="Horizontal"
+              ScrollViewer.VerticalScrollBarVisibility="Auto">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="45"/>
+        <DataGridTextColumn Header="X (E)" Binding="{Binding X}" Width="*"/>
+        <DataGridTextColumn Header="Y (N)" Binding="{Binding Y}" Width="*"/>
+        <DataGridTextColumn Header="Z" Binding="{Binding Z}" Width="*"/>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal"
+                HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Content="Prikazi tacke" Width="125" Height="30"
+              Margin="0,0,8,0" Click="OnPreview"/>
+      <Button Content="Snimi u projekat" Width="140" Height="30"
+              IsDefault="True" Margin="0,0,8,0" Click="OnSave"/>
+      <Button Content="Zatvori" Width="100" Height="30"
+              IsCancel="True" Click="OnClose"/>
+    </StackPanel>
+  </Grid>
+</Window>

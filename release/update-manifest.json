@@ -1,6 +1,6 @@
 ﻿{
-    "Version":  "1.1.14",
-    "ReleaseNotes":  "Situacija: Uredjivanje pop. osa (dodavanje/brisanje), brisanje bez obrtanja stacionaze; poduzni STA prati situaciju; UredjenjeKrivine dijalog vise nije opsecen; ispravke kontura/terena.",
-    "DownloadUrl":  "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.1.14.exe",
-    "PublishedAt":  "2026-07-17"
+  "Version": "1.2.0",
+  "ReleaseNotes": "Šta je novo u 1.2.0:\n• Projekat — modernizovan preglednik; prikaz i zumiranje osovine, profila i tačaka u crtežu\n• Osovina — Best Fit iz polilinije; kotiranje krivina na početku i kraju (A, L, R)\n• Poprečne ose (TCMPOPSTAC) — izbor osovine dijalogom; dužine, font i tekst sa postojećih štapića; prikaz stacionaže dok crtate\n• Kolovoz — upravljanje trakama: decimalni unos širine i stabilniji rad\n• Geodetski krstovi i podešavanja poprečnih osa — novi izgled dijaloga\n• Automatski razmak oznaka — preskok bliži od 10 m (ručno crtane ose ostaju)",
+  "DownloadUrl": "https://github.com/mungosthe-cpu/TCM-INZINJERING/releases/latest/download/TCM-INZINJERING-Setup-1.2.0.exe",
+  "PublishedAt": "2026-07-20"
 }

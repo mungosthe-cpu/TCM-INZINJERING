@@ -73,6 +73,7 @@ internal static class ProfileProjectedSampler
         {
             var prev = vertices[i - 1];
             var curr = vertices[i];
+            // Horizontalni lanac (plan XY) — ista stacionaža kao situacija, ne 3D dužina.
             var dx = curr.X - prev.X;
             var dy = curr.Y - prev.Y;
             station += Math.Sqrt(dx * dx + dy * dy);

@@ -11,7 +11,7 @@ public sealed class UpdateCommands
     {
 #if BRICSCAD
         var doc = AcApp.DocumentManager.MdiActiveDocument;
-        doc?.Editor.WriteMessage("\nTCM-INZINJERING: provera nadogradnje...");
+        doc?.Editor.WriteMessage("\nTCM-ROADS: provera nadogradnje...");
 #endif
         UpdateUi.CheckAndNotify(owner: null);
     }
@@ -23,6 +23,12 @@ public sealed class UpdateCommands
     {
         try
         {
+            UpdatePreferences.Load();
+            if (!UpdatePreferences.CheckOnStartup)
+            {
+                return;
+            }
+
             var result = UpdateChecker.CheckForUpdates();
             if (!result.CheckSucceeded || !result.UpdateAvailable)
             {

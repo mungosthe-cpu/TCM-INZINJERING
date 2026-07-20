@@ -187,7 +187,7 @@ public partial class CrossAxisSettingsDialog : Window
     {
         if (!TryReadUi(out var settings, out var left, out var right, out var message))
         {
-            MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, message, "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -206,13 +206,13 @@ public partial class CrossAxisSettingsDialog : Window
     {
         if (GetSelectedHandles().Count == 0)
         {
-            MessageBox.Show(this, "Izaberite bar jednu poprečnu osu u tabeli.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, "Izaberite bar jednu poprečnu osu u tabeli.", "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (!TryReadUi(out var settings, out var left, out var right, out var message))
         {
-            MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, message, "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -225,13 +225,13 @@ public partial class CrossAxisSettingsDialog : Window
     {
         if (!TryReadUi(out var settings, out var left, out var right, out var message))
         {
-            MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, message, "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (GetSelectedHandles().Count == 0)
         {
-            MessageBox.Show(this, "Izaberite bar jednu poprečnu osu u tabeli.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, "Izaberite bar jednu poprečnu osu u tabeli.", "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

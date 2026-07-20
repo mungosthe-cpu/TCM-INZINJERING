@@ -59,7 +59,8 @@ public partial class TerrainBlockPointDialog : Window
     private static bool LooksLikeElevation(string tag)
     {
         var t = tag.Trim().ToUpperInvariant();
-        return t is "Z" or "H" or "ELEV" or "ELEVATION" or "VISINA" or "KOTA" or "HEIGHT" or "RL";
+        return t is "Z" or "H" or "ELEV" or "ELEVATION" or "VISINA" or "KOTA" or "KOTAC"
+            or "HEIGHT" or "RL";
     }
 
     private static bool LooksLikeElevationValue(string value) =>
@@ -77,7 +78,7 @@ public partial class TerrainBlockPointDialog : Window
     {
         if (ElevationAttrBox.SelectedItem is not TerrainBlockAttributeRow row)
         {
-            MessageBox.Show(this, "Izaberite atribut koji sadrzi visinu.", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Izaberite atribut koji sadrzi visinu.", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }

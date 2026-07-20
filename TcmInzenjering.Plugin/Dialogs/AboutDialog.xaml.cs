@@ -17,7 +17,19 @@ public partial class AboutDialog : Window
         AuthorText.Text = PluginInfo.AuthorName;
         PhoneText.Text = PluginInfo.AuthorPhone;
         EmailText.Text = PluginInfo.AuthorEmail;
+        UpdatePreferences.Load();
+        CheckOnStartupBox.IsChecked = UpdatePreferences.CheckOnStartup;
         TryLoadLogo();
+    }
+
+    private void OnStartupPrefChanged(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        UpdatePreferences.Save(CheckOnStartupBox.IsChecked == true);
     }
 
     private void TryLoadLogo()

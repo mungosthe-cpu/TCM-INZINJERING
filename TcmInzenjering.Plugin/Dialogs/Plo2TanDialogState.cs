@@ -12,7 +12,7 @@ public enum Plo2TanDialogCloseAction
 
 public sealed class Plo2TanDialogState
 {
-    public string AxisName { get; set; } = "OS-1";
+    public string AxisName { get; set; } = "OSA-1";
     public double CurveRadius { get; set; } = 50;
     public double StartStation { get; set; }
     public double EndStation { get; set; }

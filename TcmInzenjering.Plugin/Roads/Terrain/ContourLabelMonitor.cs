@@ -13,6 +13,8 @@ internal static class ContourLabelMonitor
     private static readonly HashSet<long> DirtyContourHandles = new();
     private static bool _idleHooked;
     private static int _suppressDepth;
+    private static DateTime _earliestIdleUtc = DateTime.MinValue;
+    private const int IdleDebounceMs = 250;
 
     public static void Initialize()
     {
@@ -90,7 +92,13 @@ internal static class ContourLabelMonitor
 
     private static void EnsureIdle()
     {
-        if (TerrainCommandGuard.IsSuppressed || _idleHooked)
+        if (TerrainCommandGuard.IsSuppressed)
+        {
+            return;
+        }
+
+        _earliestIdleUtc = DateTime.UtcNow.AddMilliseconds(IdleDebounceMs);
+        if (_idleHooked)
         {
             return;
         }
@@ -101,6 +109,11 @@ internal static class ContourLabelMonitor
 
     private static void OnIdle(object? sender, EventArgs e)
     {
+        if (DateTime.UtcNow < _earliestIdleUtc)
+        {
+            return;
+        }
+
         long[] handles;
         lock (DirtyContourHandles)
         {
@@ -136,7 +149,7 @@ internal static class ContourLabelMonitor
                 if (updated > 0)
                 {
                     doc.Editor.WriteMessage(
-                        $"\nTCM-INZINJERING: Kotne oznake usklađene sa izohipsama ({updated}).");
+                        $"\nTCM-ROADS: Kotne oznake usklađene sa izohipsama ({updated}).");
                 }
             }
             catch

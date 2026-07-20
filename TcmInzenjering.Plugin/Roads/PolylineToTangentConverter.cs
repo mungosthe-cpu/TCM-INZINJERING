@@ -14,8 +14,16 @@ internal static class PolylineToTangentConverter
         double startStation,
         string axisName,
         IReadOnlyDictionary<int, double>? cornerRadii = null)
+        => Convert(ExtractVertices(source), curveRadius, startStation, axisName, cornerRadii);
+
+    public static RoadAxis Convert(
+        IReadOnlyList<Point2d> sourceVertices,
+        double curveRadius,
+        double startStation,
+        string axisName,
+        IReadOnlyDictionary<int, double>? cornerRadii = null)
     {
-        var vertices = ExtractVertices(source);
+        var vertices = sourceVertices.ToList();
         if (vertices.Count < 2)
         {
             throw new InvalidOperationException("Polylinija mora imati najmanje 2 temena.");

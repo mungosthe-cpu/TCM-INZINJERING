@@ -38,6 +38,7 @@
     </PackageReference>
     <!-- FolderBrowserDialog u ProjectFolderDialog — bez UseWindowsForms (izbegava konflikt sa WPF). -->
     <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net48' and '$(UseBricsCAD)' == 'true'">

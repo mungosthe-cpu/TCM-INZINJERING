@@ -27,7 +27,7 @@ public sealed partial class RoadCommands
 
         try
         {
-            if (!TryPickAxisNearNode(ed, db, out var axisName, out var nodeNumber))
+            if (!TryChooseAxisForNodeEdit(ed, db, out var axisName, out var nodeNumber))
             {
                 return;
             }
@@ -39,7 +39,7 @@ public sealed partial class RoadCommands
                 metadata = RoadAxisStore.Load(tr, db, axisName);
                 if (metadata is null)
                 {
-                    ed.WriteMessage($"\nTCM-INZINJERING: Nema metapodataka za osovinu „{axisName}“.");
+                    ed.WriteMessage($"\nTCM-ROADS: Nema metapodataka za osovinu „{axisName}“.");
                     tr.Commit();
                     return;
                 }
@@ -47,7 +47,7 @@ public sealed partial class RoadCommands
                 var axis = AxisGeometryReader.ReadAxis(tr, db, axisName, metadata.StartStation);
                 if (axis is null)
                 {
-                    ed.WriteMessage("\nTCM-INZINJERING: Osovina nije pronadjena u crtezu.");
+                    ed.WriteMessage("\nTCM-ROADS: Osovina nije pronadjena u crtezu.");
                     tr.Commit();
                     return;
                 }
@@ -58,12 +58,12 @@ public sealed partial class RoadCommands
 
             if (nodes.Count == 0)
             {
-                ed.WriteMessage("\nTCM-INZINJERING: Nema krivina (TS cvorova) na osovini.");
+                ed.WriteMessage("\nTCM-ROADS: Nema krivina (TS cvorova) na osovini.");
                 return;
             }
 
             var initialIndex = Math.Max(0, nodes.ToList().FindIndex(n => n.Number == nodeNumber));
-            ed.WriteMessage($"\nTCM-INZINJERING: Uredjuje se TS{nodes[initialIndex].Number} (najblizi kliku).");
+            ed.WriteMessage($"\nTCM-ROADS: Uredjuje se TS{nodes[initialIndex].Number} (najblizi kliku).");
 
 #if BRICSCAD
             var node = nodes[initialIndex];
@@ -94,15 +94,12 @@ public sealed partial class RoadCommands
 
                 if (dialog.CloseAction == NodeRoundCloseAction.Applied)
                 {
-                    var selected = nodes[MathNet48.Clamp(state.NodeIndex, 0, nodes.Count - 1)];
-                    ApplyCornerCurve(
+                    ApplyPendingCornerEdits(
                         ed,
                         db,
                         axisName,
-                        selected,
-                        state.R,
-                        state.L1,
-                        state.L2,
+                        nodes,
+                        dialog.PendingEdits,
                         metadata.StartStation);
                     break;
                 }
@@ -118,6 +115,7 @@ public sealed partial class RoadCommands
                     {
                         state.R = r;
                         state.IsManual = true;
+                        UpsertActiveDraft(state, nodes, r: r, isManual: true);
                     }
 
                     continue;
@@ -135,6 +133,8 @@ public sealed partial class RoadCommands
                         {
                             state.R = rl / tanHalf;
                         }
+
+                        UpsertActiveDraft(state, nodes, r: state.R, rl: rl, isManual: true);
                     }
 
                     continue;
@@ -152,6 +152,8 @@ public sealed partial class RoadCommands
                         {
                             state.R = rr / tanHalf;
                         }
+
+                        UpsertActiveDraft(state, nodes, r: state.R, rr: rr, isManual: true);
                     }
                 }
             }
@@ -159,7 +161,7 @@ public sealed partial class RoadCommands
         }
         catch (System.Exception ex)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING greska: {ex.Message}");
+            ed.WriteMessage($"\nTCM-ROADS greska: {ex.Message}");
             if (ex.InnerException is not null)
             {
                 ed.WriteMessage($" ({ex.InnerException.Message})");
@@ -170,6 +172,131 @@ public sealed partial class RoadCommands
             {
                 ed.WriteMessage($"\n  {line}");
             }
+        }
+    }
+
+    private static void UpsertActiveDraft(
+        NodeRoundEditState state,
+        IReadOnlyList<TangentNodeInfo> nodes,
+        double? r = null,
+        double? rl = null,
+        double? rr = null,
+        bool? isManual = null)
+    {
+        var index = MathNet48.Clamp(state.NodeIndex, 0, nodes.Count - 1);
+        if (!state.NodeDrafts.TryGetValue(index, out var draft))
+        {
+            draft = new NodeRoundNodeDraft
+            {
+                NodeIndex = index,
+                NodeNumber = nodes[index].Number,
+                IsManual = state.IsManual,
+                ManualMode = state.ManualMode,
+                R = state.R,
+                L1 = state.L1,
+                L2 = state.L2,
+                R1 = state.R1,
+                R2 = state.R2,
+                Rl = state.Rl,
+                Rr = state.Rr,
+                RaRatio = state.RaRatio,
+                Prelaznice = state.Prelaznice
+            };
+            state.NodeDrafts[index] = draft;
+        }
+
+        if (r is double radius)
+        {
+            draft.R = radius;
+            state.R = radius;
+        }
+
+        if (rl is double left)
+        {
+            draft.Rl = left;
+            state.Rl = left;
+        }
+
+        if (rr is double right)
+        {
+            draft.Rr = right;
+            state.Rr = right;
+        }
+
+        if (isManual is bool manual)
+        {
+            draft.IsManual = manual;
+            state.IsManual = manual;
+        }
+    }
+
+    private static void ApplyPendingCornerEdits(
+        Editor ed,
+        Database db,
+        string axisName,
+        IReadOnlyList<TangentNodeInfo> nodes,
+        IReadOnlyList<NodeRoundNodeDraft> drafts,
+        double startStation)
+    {
+        var ordered = drafts
+            .Where(draft => draft.R > 1e-6)
+            .OrderBy(draft => draft.NodeIndex)
+            .ToList();
+        if (ordered.Count == 0)
+        {
+            if (nodes.Count == 0)
+            {
+                return;
+            }
+
+            ApplyCornerCurve(ed, db, axisName, nodes[0], nodes[0].Radius, 0, 0, startStation);
+            return;
+        }
+
+        var applied = 0;
+        foreach (var draft in ordered)
+        {
+            TangentNodeInfo? node = null;
+            using (var tr = db.TransactionManager.StartTransaction())
+            {
+                var axis = AxisGeometryReader.ReadAxis(tr, db, axisName, startStation);
+                if (axis is not null)
+                {
+                    var fresh = TangentNodeGeometry.Collect(axis);
+                    node = fresh.FirstOrDefault(item => item.Number == draft.NodeNumber);
+                    if (node is null &&
+                        draft.NodeIndex >= 0 &&
+                        draft.NodeIndex < fresh.Count)
+                    {
+                        node = fresh[draft.NodeIndex];
+                    }
+                }
+
+                tr.Commit();
+            }
+
+            if (node is null)
+            {
+                ed.WriteMessage(
+                    $"\nTCM-ROADS: TS{draft.NodeNumber} nije pronadjen nakon prethodnih izmena — preskacem.");
+                continue;
+            }
+
+            ApplyCornerCurve(
+                ed,
+                db,
+                axisName,
+                node,
+                draft.R,
+                draft.L1,
+                draft.L2,
+                startStation);
+            applied++;
+        }
+
+        if (applied > 1)
+        {
+            ed.WriteMessage($"\nTCM-ROADS: Primenjeno {applied} TS zaobljenja u jednom OK.");
         }
     }
 
@@ -194,18 +321,18 @@ public sealed partial class RoadCommands
         var result = ed.GetDistance(opts);
         if (result.Status != PromptStatus.OK)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING: Unos {label} otkazan.");
+            ed.WriteMessage($"\nTCM-ROADS: Unos {label} otkazan.");
             return false;
         }
 
         distance = Math.Abs(result.Value);
         if (distance <= 1e-9)
         {
-            ed.WriteMessage($"\nTCM-INZINJERING: {label} mora biti > 0.");
+            ed.WriteMessage($"\nTCM-ROADS: {label} mora biti > 0.");
             return false;
         }
 
-        ed.WriteMessage($"\nTCM-INZINJERING: {label} = {distance:0.###}");
+        ed.WriteMessage($"\nTCM-ROADS: {label} = {distance:0.###}");
         return true;
     }
 
@@ -244,18 +371,18 @@ public sealed partial class RoadCommands
                 ? $", L1={l1:0.###}, L2={l2:0.###}"
                 : string.Empty;
             ed.WriteMessage(
-                $"\nTCM-INZINJERING: TS{node.Number} — R={radius:0.###}{spiralMsg} primenjeno " +
+                $"\nTCM-ROADS: TS{node.Number} — R={radius:0.###}{spiralMsg} primenjeno " +
                 $"(osovina, stacionaze, projekcija/poduzni: {updated}).");
         });
 
         if (!applied)
         {
             var msg = error ?? "Zaobljenje nije moguce sa zadatim parametrima.";
-            ed.WriteMessage($"\nTCM-INZINJERING: {msg}");
+            ed.WriteMessage($"\nTCM-ROADS: {msg}");
 #if !BRICSCAD
             System.Windows.MessageBox.Show(
                 msg,
-                "TCM-INŽINJERING — UredjenjeKrivine",
+                "TCM-ROADS — UredjenjeKrivine",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Warning);
 #endif
@@ -264,6 +391,65 @@ public sealed partial class RoadCommands
         }
 
         tr.Commit();
+    }
+
+    /// <summary>
+    /// Prvo nudi listu osa; opcija „Izaberi u crtežu“ zadržava izbor
+    /// najbližeg TS čvora klikom.
+    /// </summary>
+    private static bool TryChooseAxisForNodeEdit(
+        Editor ed,
+        Database db,
+        out string axisName,
+        out int nodeNumber)
+    {
+        axisName = string.Empty;
+        nodeNumber = 0;
+
+        IReadOnlyList<string> names;
+        using (var tr = db.TransactionManager.StartTransaction())
+        {
+            names = RoadAxisStore.GetAxisNames(tr, db);
+            tr.Commit();
+        }
+
+        if (names.Count == 0)
+        {
+            ed.WriteMessage("\nTCM-ROADS: U crtežu nema definisanih osovina.");
+            return false;
+        }
+
+        var chooser = new AxisSelectionDialog(names);
+        AcApp.ShowModalWindow(chooser);
+        if (chooser.CloseAction == AxisSelectionCloseAction.PickInDrawing)
+        {
+            return TryPickAxisNearNode(ed, db, out axisName, out nodeNumber);
+        }
+
+        if (chooser.CloseAction != AxisSelectionCloseAction.Selected)
+        {
+            return false;
+        }
+
+        axisName = chooser.SelectedAxisName;
+        using var loadTr = db.TransactionManager.StartTransaction();
+        var metadata = RoadAxisStore.Load(loadTr, db, axisName);
+        var axis = metadata is null
+            ? null
+            : AxisGeometryReader.ReadAxis(loadTr, db, axisName, metadata.StartStation);
+        var nodes = axis is null
+            ? Array.Empty<TangentNodeInfo>()
+            : TangentNodeGeometry.Collect(axis).ToArray();
+        loadTr.Commit();
+        if (nodes.Length == 0)
+        {
+            ed.WriteMessage($"\nTCM-ROADS: Osovina „{axisName}“ nema TS čvorove.");
+            axisName = string.Empty;
+            return false;
+        }
+
+        nodeNumber = nodes[0].Number;
+        return true;
     }
 
     /// <summary>
@@ -304,7 +490,7 @@ public sealed partial class RoadCommands
         if (!TryResolveAxisName(entity, out axisName))
         {
             tr.Commit();
-            ed.WriteMessage("\nTCM-INZINJERING: Izabrani entitet nije TCM osovina / tangenta.");
+            ed.WriteMessage("\nTCM-ROADS: Izabrani entitet nije TCM osovina / tangenta.");
             return false;
         }
 
@@ -312,7 +498,7 @@ public sealed partial class RoadCommands
         if (metadata is null)
         {
             tr.Commit();
-            ed.WriteMessage($"\nTCM-INZINJERING: Nema metapodataka za osovinu „{axisName}“.");
+            ed.WriteMessage($"\nTCM-ROADS: Nema metapodataka za osovinu „{axisName}“.");
             return false;
         }
 
@@ -320,7 +506,7 @@ public sealed partial class RoadCommands
         if (axis is null)
         {
             tr.Commit();
-            ed.WriteMessage("\nTCM-INZINJERING: Osovina nije pronadjena u crtezu.");
+            ed.WriteMessage("\nTCM-ROADS: Osovina nije pronadjena u crtezu.");
             return false;
         }
 
@@ -328,7 +514,7 @@ public sealed partial class RoadCommands
         if (nodes.Count == 0)
         {
             tr.Commit();
-            ed.WriteMessage("\nTCM-INZINJERING: Nema krivina (TS cvorova) na osovini.");
+            ed.WriteMessage("\nTCM-ROADS: Nema krivina (TS cvorova) na osovini.");
             return false;
         }
 

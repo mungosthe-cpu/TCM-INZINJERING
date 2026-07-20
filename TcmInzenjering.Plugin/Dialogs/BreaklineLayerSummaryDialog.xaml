@@ -1,0 +1,67 @@
+<Window x:Class="TcmInzenjering.Plugin.Dialogs.BreaklineLayerSummaryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TCM-ROADS — Breakline lejer, izvestaj"
+        Width="620" Height="720"
+        MinWidth="540" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <ScrollViewer Grid.Row="0" MaxHeight="150"
+                  VerticalScrollBarVisibility="Auto" Margin="0,0,0,10">
+      <TextBlock x:Name="SummaryText" TextWrapping="Wrap" FontSize="13"/>
+    </ScrollViewer>
+
+    <TextBlock x:Name="AddedHeader" Grid.Row="1" FontWeight="SemiBold"
+               Margin="0,0,0,6" Visibility="Collapsed"/>
+
+    <DataGrid x:Name="AddedGrid" Grid.Row="2"
+              AutoGenerateColumns="False"
+              IsReadOnly="True"
+              CanUserAddRows="False"
+              HeadersVisibility="Column"
+              GridLinesVisibility="Horizontal"
+              ScrollViewer.VerticalScrollBarVisibility="Auto"
+              Visibility="Collapsed">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="44"/>
+        <DataGridTextColumn Header="X (E)" Binding="{Binding X}" Width="*"/>
+        <DataGridTextColumn Header="Y (N)" Binding="{Binding Y}" Width="*"/>
+        <DataGridTextColumn Header="Z" Binding="{Binding Z}" Width="*"/>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <Grid Grid.Row="3" Margin="0,12,0,0">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <WrapPanel Grid.Row="0">
+        <Button x:Name="PreviewBtn"
+                Content="Prikazi dodate tacke" Width="165" Height="30" Margin="0,0,8,8"
+                Click="OnPreviewPoints" Visibility="Collapsed"/>
+        <Button x:Name="PreviewFailedBtn"
+                Content="Prikazi neuspele segmente" Width="190" Height="30" Margin="0,0,8,8"
+                Click="OnPreviewFailed" Visibility="Collapsed"/>
+        <Button x:Name="SaveProjectBtn"
+                Content="Snimi u projekat" Width="145" Height="30" Margin="0,0,8,8"
+                Click="OnSaveToProject" Visibility="Collapsed"/>
+        <Button x:Name="UndoBtn"
+                Content="Ponisti dodate tacke" Width="165" Height="30" Margin="0,0,8,8"
+                Click="OnUndo" Visibility="Collapsed"/>
+      </WrapPanel>
+      <Button Grid.Row="1" HorizontalAlignment="Right"
+              Content="Zatvori" Width="100" Height="30"
+              IsCancel="True" IsDefault="True" Click="OnClose"/>
+    </Grid>
+  </Grid>
+</Window>

@@ -29,7 +29,7 @@ public partial class StationFontDialog : Window
         var resolved = StationFontCatalog.ResolveFileName(selected?.FileName ?? FontBox.Text);
         if (string.IsNullOrWhiteSpace(resolved))
         {
-            MessageBox.Show(this, "Izaberite font.", "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, "Izaberite font.", "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

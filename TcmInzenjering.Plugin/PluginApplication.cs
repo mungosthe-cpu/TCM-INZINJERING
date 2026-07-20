@@ -47,21 +47,25 @@ public sealed class PluginApplication : IExtensionApplication
                 Roads.AxisSelectionCoordinator.Initialize();
                 Roads.TerrainSelectionCoordinator.Initialize();
                 Roads.Terrain.ContourLabelMonitor.Initialize();
+                Roads.Terrain.TerrainBoundaryEraseMonitor.Initialize();
+                Roads.TcmProjectStore.Load();
                 Roads.StationFontPreferences.Load();
                 Roads.ProjectFolderPreferences.Load();
                 Roads.Terrain.ContourPreferences.Load();
+                Roads.Terrain.TerrainPointBlockPreferences.Load();
+                Update.UpdatePreferences.Load();
             }
             catch (System.Exception ex)
             {
-                WriteMessage($"TCM-INZINJERING: greska pri inicijalizaciji puteva - {ex.Message}");
+                WriteMessage($"TCM-ROADS: greska pri inicijalizaciji puteva - {ex.Message}");
             }
 
-            WriteMessage($"TCM-INZINJERING v{PluginInfo.Version}: plugin ucitan. Komande: TCMPLO2TAN, TCMUPDATE, TCMSTACAZUR");
+            WriteMessage($"TCM-ROADS v{PluginInfo.Version}: plugin ucitan. Komande: TCMPLO2TAN, TCMUPDATE, TCMSTACAZUR");
             System.Threading.Tasks.Task.Run(UpdateCommands.CheckForUpdatesOnStartup);
         }
         catch (System.Exception ex)
         {
-            WriteMessage($"TCM-INZINJERING: greska pri ucitavanju - {ex.Message}");
+            WriteMessage($"TCM-ROADS: greska pri ucitavanju - {ex.Message}");
         }
     }
 
@@ -78,6 +82,7 @@ public sealed class PluginApplication : IExtensionApplication
         Roads.AxisSelectionCoordinator.Terminate();
         Roads.TerrainSelectionCoordinator.Terminate();
         Roads.Terrain.ContourLabelMonitor.Terminate();
+        Roads.Terrain.TerrainBoundaryEraseMonitor.Terminate();
     }
 
 #if !BRICSCAD
@@ -130,13 +135,13 @@ public sealed class PluginApplication : IExtensionApplication
         }
         catch (System.Exception ex)
         {
-            WriteMessage($"TCM-INZINJERING: greska pri kreiranju ribbon taba - {ex.Message}");
+            WriteMessage($"TCM-ROADS: greska pri kreiranju ribbon taba - {ex.Message}");
         }
     }
 #else
     internal static void EnsureRibbon()
     {
-        WriteMessage("TCM-INZINJERING: Ribbon nije dostupan u BricsCAD verziji. Koristite komande iz komandne linije.");
+        WriteMessage("TCM-ROADS: Ribbon nije dostupan u BricsCAD verziji. Koristite komande iz komandne linije.");
     }
 #endif
 

@@ -9,6 +9,7 @@ public partial class Plo2TanDialog : Window
 {
     private readonly double _axisLength;
     private readonly Plo2TanDialogState _state;
+    private readonly HashSet<string> _existingAxisNames;
     private bool _updating;
     private bool _isUiReady;
 
@@ -25,10 +26,16 @@ public partial class Plo2TanDialog : Window
     public int AxisCounterStart => _state.AxisCounterStart;
     public StationLabelOptions StationOptions => _state.ToStationOptions();
 
-    public Plo2TanDialog(double axisLength, Plo2TanDialogState state)
+    public Plo2TanDialog(
+        double axisLength,
+        Plo2TanDialogState state,
+        IEnumerable<string>? existingAxisNames = null)
     {
         _axisLength = Math.Max(axisLength, 0);
         _state = state;
+        _existingAxisNames = new HashSet<string>(
+            existingAxisNames ?? Array.Empty<string>(),
+            StringComparer.OrdinalIgnoreCase);
         InitializeComponent();
         _isUiReady = true;
         LoadFromState();
@@ -151,7 +158,7 @@ public partial class Plo2TanDialog : Window
     {
         if (!TryReadInputs(out var message))
         {
-            MessageBox.Show(this, message, "TCM-INZINJERING", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, message, "TCM-ROADS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -181,6 +188,17 @@ public partial class Plo2TanDialog : Window
         if (string.IsNullOrWhiteSpace(AxisNameBox.Text))
         {
             errorMessage = "Unesite ime osovine.";
+            return false;
+        }
+
+        var axisName = AxisNameBox.Text.Trim();
+        if (_existingAxisNames.Contains(axisName))
+        {
+            errorMessage =
+                $"Osovina '{axisName}' već postoji u crtežu. " +
+                "Unesite jedinstveno ime, na primer sledeće slobodno OSA-n.";
+            AxisNameBox.Focus();
+            AxisNameBox.SelectAll();
             return false;
         }
 
@@ -234,7 +252,7 @@ public partial class Plo2TanDialog : Window
             return false;
         }
 
-        _state.AxisName = AxisNameBox.Text.Trim();
+        _state.AxisName = axisName;
         _state.CurveRadius = radius;
         _state.StartStation = start;
         _state.EndStation = end;

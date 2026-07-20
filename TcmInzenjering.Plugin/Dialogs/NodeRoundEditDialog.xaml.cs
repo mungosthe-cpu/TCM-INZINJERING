@@ -1,9 +1,6 @@
 using System.Globalization;
-using System.IO;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Imaging;
 using Autodesk.AutoCAD.Geometry;
 using TcmInzenjering.Plugin.Roads;
 
@@ -26,6 +23,24 @@ public enum ManualCurveMode
     Ll
 }
 
+/// <summary>Stanje jednog TS čvora sačuvano tokom Prethodni/Sledeći navigacije.</summary>
+public sealed class NodeRoundNodeDraft
+{
+    public int NodeIndex { get; set; }
+    public int NodeNumber { get; set; }
+    public bool IsManual { get; set; }
+    public ManualCurveMode ManualMode { get; set; } = ManualCurveMode.Lrl;
+    public double R { get; set; }
+    public double L1 { get; set; }
+    public double L2 { get; set; }
+    public double R1 { get; set; }
+    public double R2 { get; set; }
+    public double Rl { get; set; }
+    public double Rr { get; set; }
+    public double RaRatio { get; set; } = 2.0;
+    public bool Prelaznice { get; set; }
+}
+
 /// <summary>Stanje dijaloga UredjenjeKrivine (preživljava pick sa crteža).</summary>
 public sealed class NodeRoundEditState
 {
@@ -41,6 +56,11 @@ public sealed class NodeRoundEditState
     public double Rr { get; set; }
     public double RaRatio { get; set; } = 2.0;
     public bool Prelaznice { get; set; }
+    /// <summary>Auto prikaz: true=A1/A2, false=L1/L2.</summary>
+    public bool ShowAParameters { get; set; } = true;
+
+    /// <summary>Izmene po indeksu čvora — zadržavaju se dok korisnik ide Prethodni/Sledeći.</summary>
+    public Dictionary<int, NodeRoundNodeDraft> NodeDrafts { get; } = new();
 }
 
 public partial class NodeRoundEditDialog : Window
@@ -61,6 +81,12 @@ public partial class NodeRoundEditDialog : Window
     public Point3d CurrentPi => Current.Pi;
     public double AppliedRadius { get; private set; }
     public bool Applied => CloseAction == NodeRoundCloseAction.Applied;
+
+    /// <summary>Sve sačuvane izmene po TS čvorovima (redosled po indeksu).</summary>
+    public IReadOnlyList<NodeRoundNodeDraft> PendingEdits =>
+        _state.NodeDrafts.Values
+            .OrderBy(draft => draft.NodeIndex)
+            .ToList();
 
     public NodeRoundEditDialog(
         IReadOnlyList<TangentNodeInfo> nodes,
@@ -85,7 +111,6 @@ public partial class NodeRoundEditDialog : Window
             Owner = owner;
         }
 
-        TryLoadSchemaImage();
         LoadCurrent();
     }
 
@@ -99,19 +124,13 @@ public partial class NodeRoundEditDialog : Window
             Title = $"UredjenjeKrivine [TS{Current.Number}]";
             _state.NodeIndex = _index;
 
-            if (_state.R <= 1e-6)
+            if (_state.NodeDrafts.TryGetValue(_index, out var draft))
             {
-                _state.R = Current.Radius > 1e-6 ? Current.Radius : _defaultRadius;
+                ApplyDraftToState(draft);
             }
-
-            if (_state.Rl <= 1e-6)
+            else
             {
-                _state.Rl = Current.TangentLength1;
-            }
-
-            if (_state.Rr <= 1e-6)
-            {
-                _state.Rr = Current.TangentLength2;
+                SeedStateFromNode(Current);
             }
 
             AppliedRadius = _state.R;
@@ -138,11 +157,79 @@ public partial class NodeRoundEditDialog : Window
             PrevBtn.IsEnabled = _index > 0;
             NextBtn.IsEnabled = _index < _nodes.Count - 1;
             ApplyEnableState();
+            UpdateTransitionParameterDisplay();
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private void SeedStateFromNode(TangentNodeInfo node)
+    {
+        _state.R = node.Radius > 1e-6 ? node.Radius : _defaultRadius;
+        _state.Rl = node.TangentLength1 > 1e-6 ? node.TangentLength1 : 0;
+        _state.Rr = node.TangentLength2 > 1e-6 ? node.TangentLength2 : 0;
+        _state.L1 = node.L1;
+        _state.L2 = node.L2;
+        _state.Prelaznice = node.L1 > 1e-6 || node.L2 > 1e-6;
+        _state.R1 = 0;
+        _state.R2 = 0;
+        _state.IsManual = node.L1 > 1e-6 || node.L2 > 1e-6;
+        if (_state.Rl <= 1e-6 || _state.Rr <= 1e-6)
+        {
+            var half = node.DeflectionRadians / 2.0;
+            var tanHalf = Math.Tan(half);
+            if (tanHalf > 1e-12)
+            {
+                var tangent = _state.R * tanHalf;
+                if (_state.Rl <= 1e-6)
+                {
+                    _state.Rl = tangent;
+                }
+
+                if (_state.Rr <= 1e-6)
+                {
+                    _state.Rr = tangent;
+                }
+            }
+        }
+    }
+
+    private void ApplyDraftToState(NodeRoundNodeDraft draft)
+    {
+        _state.IsManual = draft.IsManual;
+        _state.ManualMode = draft.ManualMode;
+        _state.R = draft.R;
+        _state.L1 = draft.L1;
+        _state.L2 = draft.L2;
+        _state.R1 = draft.R1;
+        _state.R2 = draft.R2;
+        _state.Rl = draft.Rl;
+        _state.Rr = draft.Rr;
+        _state.RaRatio = draft.RaRatio;
+        _state.Prelaznice = draft.Prelaznice;
+    }
+
+    private void PersistCurrentDraft()
+    {
+        SnapshotToState();
+        _state.NodeDrafts[_index] = new NodeRoundNodeDraft
+        {
+            NodeIndex = _index,
+            NodeNumber = Current.Number,
+            IsManual = _state.IsManual,
+            ManualMode = _state.ManualMode,
+            R = _state.R,
+            L1 = _state.L1,
+            L2 = _state.L2,
+            R1 = _state.R1,
+            R2 = _state.R2,
+            Rl = _state.Rl,
+            Rr = _state.Rr,
+            RaRatio = _state.RaRatio,
+            Prelaznice = _state.Prelaznice
+        };
     }
 
     private void SnapshotToState()
@@ -155,15 +242,7 @@ public partial class NodeRoundEditDialog : Window
             _state.R = r;
         }
 
-        if (TryParse(L1Box.Text, out var l1))
-        {
-            _state.L1 = l1;
-        }
-
-        if (TryParse(L2Box.Text, out var l2))
-        {
-            _state.L2 = l2;
-        }
+        ReadTransitionValuesToState();
 
         if (TryParse(R1Box.Text, out var r1))
         {
@@ -197,6 +276,80 @@ public partial class NodeRoundEditDialog : Window
         AppliedRadius = _state.R;
     }
 
+    private void ReadTransitionValuesToState()
+    {
+        if (!TryParse(L1Box.Text, out var first) ||
+            !TryParse(L2Box.Text, out var second))
+        {
+            return;
+        }
+
+        var autoWithTransitions =
+            ManualRadio.IsChecked != true &&
+            PrelazniceBox.IsChecked == true;
+        if (autoWithTransitions && _state.ShowAParameters && _state.R > 1e-9)
+        {
+            // Plateia: L = A² / R.
+            _state.L1 = first * first / _state.R;
+            _state.L2 = second * second / _state.R;
+            return;
+        }
+
+        _state.L1 = first;
+        _state.L2 = second;
+    }
+
+    private void UpdateTransitionParameterDisplay()
+    {
+        var autoWithTransitions =
+            ManualRadio.IsChecked != true &&
+            PrelazniceBox.IsChecked == true;
+        var showA = autoWithTransitions && _state.ShowAParameters;
+
+        L1Label.Text = showA ? "A1" : "L1";
+        L2Label.Text = showA ? "A2" : "L2";
+        ParamABtn.Content = showA ? "L" : "A";
+        ParamABtn.IsEnabled = autoWithTransitions;
+
+        if (showA)
+        {
+            var radius = _state.R > 1e-9 ? _state.R : 0;
+            L1Box.Text = F(Math.Sqrt(Math.Max(0, _state.L1 * radius)));
+            L2Box.Text = F(Math.Sqrt(Math.Max(0, _state.L2 * radius)));
+        }
+        else
+        {
+            L1Box.Text = F(_state.L1);
+            L2Box.Text = F(_state.L2);
+        }
+    }
+
+    private void RecalcAutoTransitions(double radius)
+    {
+        if (ManualRadio.IsChecked == true ||
+            PrelazniceBox.IsChecked != true ||
+            !TryParse(RaBox.Text, out var ratio) ||
+            ratio <= 1e-9)
+        {
+            if (ManualRadio.IsChecked != true && PrelazniceBox.IsChecked != true)
+            {
+                _state.L1 = 0;
+                _state.L2 = 0;
+            }
+
+            UpdateTransitionParameterDisplay();
+            return;
+        }
+
+        // Plateia: A = R / (R/A), zatim L = A² / R.
+        var a = radius / ratio;
+        var length = a * a / radius;
+        _state.RaRatio = ratio;
+        _state.L1 = length;
+        _state.L2 = length;
+        UpdateTransitionParameterDisplay();
+    }
+
     /// <summary>
     /// LR/RL/LRL/Auto: isključi L1/L2 koji nisu deo režima (iako TextBox još prikazuje staru vrednost).
     /// </summary>
@@ -204,8 +357,12 @@ public partial class NodeRoundEditDialog : Window
     {
         if (!_state.IsManual)
         {
-            _state.L1 = 0;
-            _state.L2 = 0;
+            if (!_state.Prelaznice)
+            {
+                _state.L1 = 0;
+                _state.L2 = 0;
+            }
+
             return;
         }
 
@@ -274,6 +431,7 @@ public partial class NodeRoundEditDialog : Window
             SetRow(RrLock, RrBox, enabled: false, locked: false);
             PrelazniceBox.IsEnabled = true;
             RaBox.IsEnabled = PrelazniceBox.IsChecked == true;
+            ParamABtn.IsEnabled = PrelazniceBox.IsChecked == true;
             return;
         }
 
@@ -295,6 +453,7 @@ public partial class NodeRoundEditDialog : Window
         PrelazniceBox.IsEnabled = true;
         PrelazniceBox.IsChecked = useL1 || useL2;
         RaBox.IsEnabled = PrelazniceBox.IsChecked == true;
+        ParamABtn.IsEnabled = false;
     }
 
     private static void SetRow(CheckBox lockBox, TextBox valueBox, bool enabled, bool locked)
@@ -329,6 +488,8 @@ public partial class NodeRoundEditDialog : Window
         {
             RecalcRadiusFromLengths();
         }
+
+        UpdateTransitionParameterDisplay();
     }
 
     private void OnManualModeChanged(object sender, SelectionChangedEventArgs e)
@@ -343,6 +504,22 @@ public partial class NodeRoundEditDialog : Window
         {
             RecalcRadiusFromLengths();
         }
+
+        UpdateTransitionParameterDisplay();
+    }
+
+    private void OnRaChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loading || _syncing ||
+            ManualRadio.IsChecked == true ||
+            PrelazniceBox.IsChecked != true ||
+            !TryParse(RBox.Text, out var radius) ||
+            radius <= 1e-6)
+        {
+            return;
+        }
+
+        RecalcAutoTransitions(radius);
     }
 
     private void OnParamChanged(object sender, TextChangedEventArgs e)
@@ -408,6 +585,8 @@ public partial class NodeRoundEditDialog : Window
             RrBox.Text = F(t);
             _state.Rr = t;
         }
+
+        RecalcAutoTransitions(radius);
     }
 
     private void RecalcFromTangent(double tangentLength)
@@ -490,7 +669,7 @@ public partial class NodeRoundEditDialog : Window
 
     private void CloseForPick(NodeRoundCloseAction action)
     {
-        SnapshotToState();
+        PersistCurrentDraft();
         CloseAction = action;
         try
         {
@@ -514,6 +693,19 @@ public partial class NodeRoundEditDialog : Window
         }
     }
 
+    /// <summary>Plateia prikaz: menja A1/A2 ↔ L1/L2 bez promene geometrije.</summary>
+    private void OnParamAClick(object sender, RoutedEventArgs e)
+    {
+        if (ManualRadio.IsChecked == true || PrelazniceBox.IsChecked != true)
+        {
+            return;
+        }
+
+        ReadTransitionValuesToState();
+        _state.ShowAParameters = !_state.ShowAParameters;
+        UpdateTransitionParameterDisplay();
+    }
+
     private void OnPrev(object sender, RoutedEventArgs e)
     {
         if (_index <= 0)
@@ -521,14 +713,8 @@ public partial class NodeRoundEditDialog : Window
             return;
         }
 
-        SnapshotToState();
+        PersistCurrentDraft();
         _index--;
-        // Reset R from node when switching unless user was mid-edit — keep state R only for same node.
-        _state.R = 0;
-        _state.Rl = 0;
-        _state.Rr = 0;
-        _state.L1 = 0;
-        _state.L2 = 0;
         LoadCurrent();
     }
 
@@ -539,13 +725,8 @@ public partial class NodeRoundEditDialog : Window
             return;
         }
 
-        SnapshotToState();
+        PersistCurrentDraft();
         _index++;
-        _state.R = 0;
-        _state.Rl = 0;
-        _state.Rr = 0;
-        _state.L1 = 0;
-        _state.L2 = 0;
         LoadCurrent();
     }
 
@@ -560,11 +741,12 @@ public partial class NodeRoundEditDialog : Window
 
         if (_state.R <= 1e-6)
         {
-            MessageBox.Show(this, "Unesite ispravan radijus R (> 0).", "TCM-INŽINJERING",
+            MessageBox.Show(this, "Unesite ispravan radijus R (> 0).", "TCM-ROADS",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
+        PersistCurrentDraft();
         AppliedRadius = _state.R;
         CloseAction = NodeRoundCloseAction.Applied;
         try
@@ -588,44 +770,6 @@ public partial class NodeRoundEditDialog : Window
         {
             Close();
         }
-    }
-
-    private void TryLoadSchemaImage()
-    {
-        foreach (var path in GetSchemaPaths())
-        {
-            if (!File.Exists(path))
-            {
-                continue;
-            }
-
-            try
-            {
-                var image = new BitmapImage();
-                image.BeginInit();
-                image.UriSource = new Uri(path, UriKind.Absolute);
-                image.CacheOption = BitmapCacheOption.OnLoad;
-                image.EndInit();
-                image.Freeze();
-                SchemaImage.Source = image;
-                return;
-            }
-            catch
-            {
-                // try next
-            }
-        }
-    }
-
-    private static IEnumerable<string> GetSchemaPaths()
-    {
-        var asm = Assembly.GetExecutingAssembly().Location;
-        var dir = Path.GetDirectoryName(asm) ?? "";
-        yield return Path.Combine(dir, "Icons", "UredjenjeKrivine.png");
-        yield return Path.Combine(dir, "UredjenjeKrivine.png");
-
-        var projectIcons = Path.GetFullPath(Path.Combine(dir, "..", "..", "..", "Icons", "UredjenjeKrivine.png"));
-        yield return projectIcons;
     }
 
     private static string F(double v) => v.ToString("0.######", Inv);

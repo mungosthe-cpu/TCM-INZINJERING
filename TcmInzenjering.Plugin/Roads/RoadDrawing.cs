@@ -10,6 +10,7 @@ internal static class RoadDrawing
     public const string AxisLayerName = "TCM_OSOVINA";
     public const string StationLayerName = "TCM_STACIONAZA";
     public const string RadiusLayerName = "TCM_RADIJUS";
+    public const string RadiusDimStyleName = "TCM-Radijus";
     public const string SegmentLayerName = "TCM_SEGMENT";
     public const string TableLayerName = "TCM_TABELA";
     public const string TangentNodeLayerName = "TCM_CVOR";
@@ -67,7 +68,7 @@ internal static class RoadDrawing
         short axisColorIndex = DrawingColorDefaults.Axis)
     {
         EnsureLayer(tr, modelSpace.Database, StationLayerName, Color.FromColorIndex(ColorMethod.ByAci, 3));
-        EnsureLayer(tr, modelSpace.Database, RadiusLayerName, Color.FromColorIndex(ColorMethod.ByAci, 2));
+        EnsureLayer(tr, modelSpace.Database, RadiusLayerName, Color.FromColorIndex(ColorMethod.ByAci, 1));
         EnsureLayer(tr, modelSpace.Database, SegmentLayerName, Color.FromColorIndex(ColorMethod.ByAci, 4));
         EnsureLayer(tr, modelSpace.Database, TableLayerName, Color.FromColorIndex(ColorMethod.ByAci, 7));
         EnsureLayer(tr, modelSpace.Database, TangentNodeLayerName, Color.FromColorIndex(ColorMethod.ByAci, 7));
@@ -98,6 +99,7 @@ internal static class RoadDrawing
             PlaceAxisBelowSourcePolyline(tr, modelSpace, ids, sourcePolylineId);
         }
 
+        RoadEntityIndex.Invalidate();
         return ids;
     }
 
@@ -158,9 +160,11 @@ internal static class RoadDrawing
             // Levo/desno od osovine u smeru rasta stacionaze (nezavisno od strane ispisa oznaka).
             var leftNormal = GetSideNormal(direction.Value, 1.0);
             var labelSideNormal = GetSideNormal(direction.Value, options.LabelSideSign);
-            StationFontPreferences.Load();
-            var leftLength = StationFontPreferences.CrossAxisLeftLength;
-            var rightLength = StationFontPreferences.CrossAxisRightLength;
+            // Tick: ukupna dužina iz dijaloga (TickLength), podeljeno levo/desno.
+            // Ne koristi StationFontPreferences (to je za pop. ose / TCMSTACFONT).
+            var half = Math.Max(0.05, options.TickLength * 0.5);
+            var leftLength = half;
+            var rightLength = half;
             // Unutar krivine (PC..PT): ista boja kao oznaka radijusa L/R.
             var onCurve = IsStationWithinArc(axis, station);
             var markColor = onCurve
@@ -463,8 +467,9 @@ internal static class RoadDrawing
             stations.Add(RoundStation(end));
         }
 
-        // Uvek ubaci pocetak/kraj lukova (PC/PT) — oznake geometrije krivine.
-        foreach (var boundary in GetArcBoundaryStations(axis))
+        // Uvek ubaci spoljne granice cele krivine (luk ili S-A-S).
+        var curveBoundaries = GetCurveBoundaryStations(axis);
+        foreach (var boundary in curveBoundaries)
         {
             stations.Add(boundary);
         }
@@ -483,23 +488,36 @@ internal static class RoadDrawing
             .Where(s => s >= start - 1e-6 && s <= end + 1e-6)
             .OrderBy(static s => s)
             .ToList();
-        PruneCrowdedNearCurveBoundaries(result, options, GetArcBoundaryStations(axis));
-        PruneCrowdedEndStation(result, options, end);
+        PruneAutoStationSpacing(result, curveBoundaries, start, end);
         return result;
     }
 
-    private static HashSet<double> GetArcBoundaryStations(RoadAxis axis)
+    private static HashSet<double> GetCurveBoundaryStations(RoadAxis axis)
     {
         var boundaries = new HashSet<double>();
-        foreach (var element in axis.Elements)
+        for (var index = 0; index < axis.Elements.Count; index++)
         {
+            var element = axis.Elements[index];
             if (element.Type != AlignmentElementType.Arc || element.Radius < 1e-6)
             {
                 continue;
             }
 
-            boundaries.Add(RoundStation(element.StartStation));
-            boundaries.Add(RoundStation(element.EndStation));
+            var first = index;
+            var last = index;
+            if (first > 0 && axis.Elements[first - 1].Type == AlignmentElementType.Spiral)
+            {
+                first--;
+            }
+
+            if (last + 1 < axis.Elements.Count &&
+                axis.Elements[last + 1].Type == AlignmentElementType.Spiral)
+            {
+                last++;
+            }
+
+            boundaries.Add(RoundStation(axis.Elements[first].StartStation));
+            boundaries.Add(RoundStation(axis.Elements[last].EndStation));
         }
 
         return boundaries;
@@ -529,80 +547,61 @@ internal static class RoadDrawing
     private static bool IsNearStation(IEnumerable<double> stations, double value, double tolerance = 1e-3) =>
         stations.Any(station => Math.Abs(station - value) <= tolerance);
 
+    private const double MinAutoCrossAxisSpacingMeters = 10.0;
+
     /// <summary>
-    /// Ako je intervalna stacionaza bliza PC/PT krivine (manje od interval/2),
-    /// ne crtaj intervalnu — ostaje oznaka pocetka/kraja krivine.
+    /// Automatske poprečne ose moraju biti udaljene najmanje 10 m.
+    /// Granice krivina i krajevi ose imaju prioritet; kada su i one preblizu,
+    /// zadržava se prva po stacionaži. Ručne CAXIS ose ne prolaze kroz ovaj metod.
     /// </summary>
-    private static void PruneCrowdedNearCurveBoundaries(
+    private static void PruneAutoStationSpacing(
         List<double> stations,
-        StationLabelOptions options,
-        IReadOnlyCollection<double> curveBoundaries)
+        IReadOnlyCollection<double> curveBoundaries,
+        double start,
+        double end)
     {
         const double tolerance = 1e-3;
-        if (stations.Count < 2 || options.Interval <= 0 || curveBoundaries.Count == 0)
+        if (stations.Count < 2)
         {
             return;
         }
 
-        var minGap = options.Interval / 2.0;
-        var toRemove = new List<double>();
-        foreach (var station in stations)
+        var protectedStations = new HashSet<double>(curveBoundaries)
         {
-            if (IsNearStation(curveBoundaries, station, tolerance))
-            {
-                continue;
-            }
+            RoundStation(start),
+            RoundStation(end)
+        };
 
-            foreach (var boundary in curveBoundaries)
+        var retained = new List<double>();
+        foreach (var station in stations.Where(s => IsNearStation(protectedStations, s, tolerance)))
+        {
+            if (retained.Count == 0 ||
+                station - retained[^1] >= MinAutoCrossAxisSpacingMeters - tolerance)
             {
-                if (Math.Abs(station - boundary) < minGap - tolerance)
-                {
-                    toRemove.Add(station);
-                    break;
-                }
+                retained.Add(station);
             }
         }
 
-        foreach (var station in toRemove)
+        foreach (var station in stations.Where(s => !IsNearStation(protectedStations, s, tolerance)))
         {
-            stations.Remove(station);
-        }
-    }
-
-    /// <summary>
-    /// Ako je krajnja stacionaza blizu predposlednje (manje od interval/2), ne crtaj predposlednju.
-    /// </summary>
-    private static void PruneCrowdedEndStation(List<double> stations, StationLabelOptions options, double end)
-    {
-        const double tolerance = 1e-3;
-        if (!options.LabelAtEnd || stations.Count < 2 || options.Interval <= 0)
-        {
-            return;
+            if (retained.All(kept =>
+                    Math.Abs(kept - station) >= MinAutoCrossAxisSpacingMeters - tolerance))
+            {
+                retained.Add(station);
+            }
         }
 
-        var last = stations[^1];
-        if (Math.Abs(last - end) > tolerance)
-        {
-            return;
-        }
-
-        var penultimate = stations[^2];
-        var gap = last - penultimate;
-        if (gap >= options.Interval / 2.0 - tolerance)
-        {
-            return;
-        }
-
-        if (options.LabelAtStart && Math.Abs(penultimate - options.StartStation) < tolerance)
-        {
-            return;
-        }
-
-        stations.RemoveAt(stations.Count - 2);
+        retained.Sort();
+        stations.Clear();
+        stations.AddRange(retained);
     }
 
     private static double RoundStation(double station) => Math.Round(station, 6);
 
+    /// <summary>
+    /// Plateia stil: oznake na početku i kraju svake krivine.
+    /// DimStyle "TCM-Radijus" označava namenu kotiranja radijusa.
+    /// </summary>
     public static int DrawRadiusLabels(
         Transaction tr,
         BlockTableRecord modelSpace,
@@ -610,96 +609,266 @@ internal static class RoadDrawing
         double textHeight,
         double labelSideSign = DefaultLabelSideSign)
     {
-        EnsureLayer(tr, modelSpace.Database, RadiusLayerName, Color.FromColorIndex(ColorMethod.ByAci, 2));
+        var height = Math.Max(0.1, textHeight);
+        EnsureLayer(
+            tr,
+            modelSpace.Database,
+            RadiusLayerName,
+            Color.FromColorIndex(ColorMethod.ByAci, 1));
+        EnsureRadiusLayerColor(tr, modelSpace.Database);
+        EnsureRadiusDimStyle(tr, modelSpace.Database, height);
         EnsureRegApp(tr, modelSpace.Database);
 
         var count = 0;
-        var offset = textHeight * 1.5;
-        var tickLength = textHeight * 0.5;
-        var arrowLength = textHeight * 0.8;
-        var arrowWidth = textHeight * 0.4;
-        var arcIndex = 0;
-
-        for (var i = 0; i < axis.Elements.Count; i++)
+        var leaderLength = height * 2.0;
+        for (var index = 0; index < axis.Elements.Count; index++)
         {
-            var element = axis.Elements[i];
-            if (element.Type != AlignmentElementType.Arc || element.Radius < 1e-6)
+            var element = axis.Elements[index];
+            if (element.Type != AlignmentElementType.Arc || element.Radius <= 1e-6)
             {
                 continue;
             }
 
-            var startDir = axis.GetDirectionAtStation(element.StartStation);
-            var endDir = axis.GetDirectionAtStation(element.EndStation);
-            if (startDir is null || endDir is null)
+            var first = index;
+            var last = index;
+            AlignmentElement? entrySpiral = null;
+            AlignmentElement? exitSpiral = null;
+            if (first > 0 && axis.Elements[first - 1].Type == AlignmentElementType.Spiral)
             {
-                arcIndex++;
-                continue;
+                entrySpiral = axis.Elements[--first];
             }
 
-            var dimArc = CreateInnerDimArc(element, offset);
-            dimArc.Layer = RadiusLayerName;
-            modelSpace.AppendEntity(dimArc);
-            tr.AddNewlyCreatedDBObject(dimArc, true);
-            RoadXData.AttachRadiusAnnotation(dimArc, axis.Name, RoadXData.RoleRadiusDimArc, arcIndex, element.Radius);
-            count++;
+            if (last + 1 < axis.Elements.Count &&
+                axis.Elements[last + 1].Type == AlignmentElementType.Spiral)
+            {
+                exitSpiral = axis.Elements[++last];
+            }
 
-            count += DrawTangencyTick(
-                tr, modelSpace, axis.Name, arcIndex, element.Start, startDir.Value, tickLength, element.Radius);
-            count += DrawTangencyTick(
-                tr, modelSpace, axis.Name, arcIndex, element.End, endDir.Value, tickLength, element.Radius);
+            var groupLongEnough =
+                axis.Elements[last].EndStation - axis.Elements[first].StartStation >=
+                MinAutoCrossAxisSpacingMeters - 1e-3;
 
-            var pi = TryGetIntersectionPoint(axis, i);
-            var leaderStartFrom = pi ?? element.Start - startDir.Value * (textHeight * 4.0);
-            var leaderEndFrom = pi ?? element.End + endDir.Value * (textHeight * 4.0);
+            // TS / ST: parametri prelaznice A= i L= (crveno).
+            if (entrySpiral is not null)
+            {
+                count += AppendSpiralAnnotation(
+                    tr, modelSpace, axis, index, entrySpiral.StartStation,
+                    entrySpiral, labelSideSign, leaderLength, height);
+            }
 
-            count += DrawTangentLeader(
-                tr,
-                modelSpace,
-                axis.Name,
-                arcIndex,
-                leaderStartFrom,
-                element.Start,
-                arrowLength,
-                arrowWidth,
-                element.Radius,
-                RoadXData.RoleRadiusArrowStart);
+            if (exitSpiral is not null && groupLongEnough)
+            {
+                count += AppendSpiralAnnotation(
+                    tr, modelSpace, axis, index, exitSpiral.EndStation,
+                    exitSpiral, labelSideSign, leaderLength, height);
+            }
 
-            count += DrawTangentLeader(
-                tr,
-                modelSpace,
-                axis.Name,
-                arcIndex,
-                leaderEndFrom,
-                element.End,
-                arrowLength,
-                arrowWidth,
-                element.Radius,
-                RoadXData.RoleRadiusArrowEnd);
+            // SC / CS (odnosno BC / EC bez prelaznica): radijus luka.
+            count += AppendStationAnnotation(
+                tr, modelSpace, axis, index, element.StartStation,
+                FormatRadius(element.Radius), element.Radius,
+                null, labelSideSign, leaderLength, height);
 
-            count += DrawConnectorToDimArc(
-                tr,
-                modelSpace,
-                axis.Name,
-                arcIndex,
-                dimArc.StartPoint,
-                element.Start,
-                startDir.Value,
-                element.Radius);
-
-            count += DrawConnectorToDimArc(
-                tr,
-                modelSpace,
-                axis.Name,
-                arcIndex,
-                dimArc.EndPoint,
-                element.End,
-                endDir.Value,
-                element.Radius);
-
-            arcIndex++;
+            if (element.EndStation - element.StartStation >=
+                MinAutoCrossAxisSpacingMeters - 1e-3)
+            {
+                count += AppendStationAnnotation(
+                    tr, modelSpace, axis, index, element.EndStation,
+                    FormatRadius(element.Radius), element.Radius,
+                    null, labelSideSign, leaderLength, height);
+            }
         }
 
         return count;
+    }
+
+    private static int AppendSpiralAnnotation(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        int elementIndex,
+        double station,
+        AlignmentElement spiral,
+        double labelSideSign,
+        double leaderLength,
+        double textHeight)
+    {
+        var a = spiral.SpiralA > 1e-9
+            ? spiral.SpiralA
+            : Math.Sqrt(Math.Max(0, spiral.Radius * spiral.Length));
+        return AppendStationAnnotation(
+            tr, modelSpace, axis, elementIndex, station,
+            FormatSpiralA(a), a, $"L={spiral.Length:F2}",
+            labelSideSign, leaderLength, textHeight);
+    }
+
+    private static int AppendStationAnnotation(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        RoadAxis axis,
+        int elementIndex,
+        double station,
+        string label,
+        double value,
+        string? secondaryLabel,
+        double labelSideSign,
+        double leaderLength,
+        double textHeight)
+    {
+        var point = axis.GetPointAtStation(station);
+        var direction = axis.GetDirectionAtStation(station) ??
+                        axis.SampleDirectionAtStation(station);
+        if (point is null || direction is null || direction.Value.Length < 1e-9)
+        {
+            return 0;
+        }
+
+        return AppendPerpendicularRadiusAnnotation(
+            tr, modelSpace, axis.Name, elementIndex, point.Value, direction.Value,
+            labelSideSign, leaderLength, textHeight, label, value, secondaryLabel);
+    }
+
+    private static int AppendPerpendicularRadiusAnnotation(
+        Transaction tr,
+        BlockTableRecord modelSpace,
+        string axisName,
+        int elementIndex,
+        Point3d axisPoint,
+        Vector3d direction,
+        double labelSideSign,
+        double leaderLength,
+        double textHeight,
+        string label,
+        double value,
+        string? secondaryLabel = null)
+    {
+        var normal = GetSideNormal(direction, labelSideSign);
+        var tip = axisPoint + normal * leaderLength;
+        var red = Color.FromColorIndex(ColorMethod.ByAci, 1);
+
+        var leader = new Line(axisPoint, tip)
+        {
+            Layer = RadiusLayerName,
+            Color = red
+        };
+        modelSpace.AppendEntity(leader);
+        tr.AddNewlyCreatedDBObject(leader, true);
+        RoadXData.AttachRadiusAnnotation(
+            leader, axisName, RoadXData.RoleRadiusDimArc, elementIndex, value);
+
+        var arrowLength = textHeight * 0.35;
+        var along = direction.GetNormal() * arrowLength;
+        var arrowBase = axisPoint + normal * arrowLength;
+        foreach (var arrowEnd in new[] { arrowBase + along, arrowBase - along })
+        {
+            var arrow = new Line(axisPoint, arrowEnd)
+            {
+                Layer = RadiusLayerName,
+                Color = red
+            };
+            modelSpace.AppendEntity(arrow);
+            tr.AddNewlyCreatedDBObject(arrow, true);
+            RoadXData.AttachRadiusAnnotation(
+                arrow, axisName, RoadXData.RoleRadiusDimArc, elementIndex, value);
+        }
+
+        var rotation = Math.Atan2(normal.Y, normal.X);
+        // Tekst čitljiv: ako je naopako, rotiraj za 180°.
+        if (Math.Cos(rotation) < 0)
+        {
+            rotation += Math.PI;
+        }
+
+        var textAnchor = tip + normal * (textHeight * 0.35);
+        var text = new DBText
+        {
+            Position = GetHorizontallyCenteredPosition(textAnchor, label, textHeight, rotation),
+            Height = textHeight,
+            TextString = label,
+            Layer = RadiusLayerName,
+            Color = red,
+            Rotation = rotation
+        };
+        modelSpace.AppendEntity(text);
+        tr.AddNewlyCreatedDBObject(text, true);
+        RoadXData.AttachRadiusAnnotation(
+            text, axisName, RoadXData.RoleRadiusText, elementIndex, value);
+
+        var count = 4;
+        if (!string.IsNullOrWhiteSpace(secondaryLabel))
+        {
+            var secondaryAnchor = textAnchor + direction.GetNormal() * (textHeight * 1.35);
+            var secondary = new DBText
+            {
+                Position = GetHorizontallyCenteredPosition(
+                    secondaryAnchor, secondaryLabel, textHeight, rotation),
+                Height = textHeight,
+                TextString = secondaryLabel,
+                Layer = RadiusLayerName,
+                Color = red,
+                Rotation = rotation
+            };
+            modelSpace.AppendEntity(secondary);
+            tr.AddNewlyCreatedDBObject(secondary, true);
+            RoadXData.AttachRadiusAnnotation(
+                secondary, axisName, RoadXData.RoleRadiusText, elementIndex, value);
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>DimStyle za kotiranje radijusa — crvena, bez dominantnih strelica.</summary>
+    internal static void EnsureRadiusDimStyle(Transaction tr, Database db, double textHeight)
+    {
+        var table = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+        var height = Math.Max(0.1, textHeight);
+        var red = Color.FromColorIndex(ColorMethod.ByAci, 1);
+        if (table.Has(RadiusDimStyleName))
+        {
+            var existing = (DimStyleTableRecord)tr.GetObject(
+                table[RadiusDimStyleName], OpenMode.ForWrite);
+            existing.Dimclrd = red;
+            existing.Dimclre = red;
+            existing.Dimclrt = red;
+            existing.Dimtxt = height;
+            existing.Dimasz = height * 0.05;
+            existing.Dimexe = 0;
+            existing.Dimexo = 0;
+            existing.Dimdle = 0;
+            return;
+        }
+
+        table.UpgradeOpen();
+        var style = new DimStyleTableRecord
+        {
+            Name = RadiusDimStyleName,
+            Dimclrd = red,
+            Dimclre = red,
+            Dimclrt = red,
+            Dimtxt = height,
+            Dimasz = height * 0.05,
+            Dimexe = 0,
+            Dimexo = 0,
+            Dimdle = 0
+        };
+        table.Add(style);
+        tr.AddNewlyCreatedDBObject(style, true);
+    }
+
+    private static void EnsureRadiusLayerColor(Transaction tr, Database db)
+    {
+        var layerTable = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+        if (!layerTable.Has(RadiusLayerName))
+        {
+            return;
+        }
+
+        var layer = (LayerTableRecord)tr.GetObject(layerTable[RadiusLayerName], OpenMode.ForWrite);
+        if (layer.Color.ColorIndex != 1)
+        {
+            layer.Color = Color.FromColorIndex(ColorMethod.ByAci, 1);
+        }
     }
 
     public static int DrawSegmentLabels(
@@ -1577,6 +1746,8 @@ internal static class RoadDrawing
 
     public static string FormatRadius(double radius) => $"R={radius:F2}";
 
+    public static string FormatSpiralA(double spiralA) => $"A={spiralA:F2}";
+
     private static string FormatSegmentLabel(AlignmentElement element)
     {
         return element.Type == AlignmentElementType.Arc
@@ -1643,182 +1814,5 @@ internal static class RoadDrawing
         modelSpace.AppendEntity(text);
         tr.AddNewlyCreatedDBObject(text, true);
         RoadXData.AttachAxisTable(text, axisName);
-    }
-
-    private static Point3d? TryGetIntersectionPoint(RoadAxis axis, int arcIndex)
-    {
-        if (arcIndex <= 0 || arcIndex >= axis.Elements.Count - 1)
-        {
-            return null;
-        }
-
-        var prev = axis.Elements[arcIndex - 1];
-        var next = axis.Elements[arcIndex + 1];
-        if (prev.Type != AlignmentElementType.Tangent || next.Type != AlignmentElementType.Tangent)
-        {
-            return null;
-        }
-
-        var p0 = TangentArcGeometry.To2d(prev.Start);
-        var p1 = TangentArcGeometry.To2d(prev.End);
-        var p2 = TangentArcGeometry.To2d(next.Start);
-        var p3 = TangentArcGeometry.To2d(next.End);
-
-        return TangentArcGeometry.TryIntersectLines(p0, p1, p2, p3, out var pi)
-            ? TangentArcGeometry.To3d(pi)
-            : null;
-    }
-
-    private static Arc CreateInnerDimArc(AlignmentElement element, double offset)
-    {
-        var startVec = element.Start - element.Center;
-        var endVec = element.End - element.Center;
-        var startAngle = Math.Atan2(startVec.Y, startVec.X);
-        var endAngle = Math.Atan2(endVec.Y, endVec.X);
-        var dimRadius = Math.Max(element.Radius - offset, element.Radius * 0.5);
-
-        return element.Clockwise
-            ? new Arc(element.Center, dimRadius, endAngle, startAngle)
-            : new Arc(element.Center, dimRadius, startAngle, endAngle);
-    }
-
-    private static Point3d GetInnerDimArcMidpoint(AlignmentElement element, double offset)
-    {
-        var startVec = element.Start - element.Center;
-        var endVec = element.End - element.Center;
-        var startAngle = Math.Atan2(startVec.Y, startVec.X);
-        var endAngle = Math.Atan2(endVec.Y, endVec.X);
-        double midAngle;
-
-        if (element.Clockwise)
-        {
-            if (endAngle > startAngle)
-            {
-                endAngle -= Math.PI * 2;
-            }
-
-            midAngle = startAngle + (endAngle - startAngle) / 2.0;
-        }
-        else
-        {
-            if (endAngle < startAngle)
-            {
-                endAngle += Math.PI * 2;
-            }
-
-            midAngle = startAngle + (endAngle - startAngle) / 2.0;
-        }
-
-        var dimRadius = Math.Max(element.Radius - offset, element.Radius * 0.5);
-        return new Point3d(
-            element.Center.X + dimRadius * Math.Cos(midAngle),
-            element.Center.Y + dimRadius * Math.Sin(midAngle),
-            element.Start.Z);
-    }
-
-    private static int DrawTangencyTick(
-        Transaction tr,
-        BlockTableRecord modelSpace,
-        string axisName,
-        int arcIndex,
-        Point3d point,
-        Vector3d direction,
-        double tickLength,
-        double radius)
-    {
-        var normal = GetSideNormal(direction, 1.0);
-        var half = tickLength / 2.0;
-        AppendRadiusLine(
-            tr,
-            modelSpace,
-            point - normal * half,
-            point + normal * half,
-            axisName,
-            arcIndex,
-            radius,
-            RoadXData.RoleRadiusTick,
-            null);
-        return 1;
-    }
-
-    private static int DrawTangentLeader(
-        Transaction tr,
-        BlockTableRecord modelSpace,
-        string axisName,
-        int arcIndex,
-        Point3d from,
-        Point3d to,
-        double arrowLength,
-        double arrowWidth,
-        double radius,
-        string role)
-    {
-        AppendRadiusLine(tr, modelSpace, from, to, axisName, arcIndex, radius, role, 7);
-
-        var direction = to - from;
-        if (direction.Length < 1e-9)
-        {
-            return 1;
-        }
-
-        var dir = direction.GetNormal();
-        var perp = new Vector3d(-dir.Y, dir.X, 0);
-        var basePoint = to - dir * arrowLength;
-        var left = basePoint + perp * (arrowWidth / 2.0);
-        var right = basePoint - perp * (arrowWidth / 2.0);
-
-        AppendRadiusLine(tr, modelSpace, to, left, axisName, arcIndex, radius, role, 7);
-        AppendRadiusLine(tr, modelSpace, to, right, axisName, arcIndex, radius, role, 7);
-        return 3;
-    }
-
-    private static int DrawConnectorToDimArc(
-        Transaction tr,
-        BlockTableRecord modelSpace,
-        string axisName,
-        int arcIndex,
-        Point3d dimPoint,
-        Point3d tangencyPoint,
-        Vector3d tangentDir,
-        double radius)
-    {
-        if (tangentDir.Length < 1e-9)
-        {
-            return 0;
-        }
-
-        var dir = tangentDir.GetNormal();
-        var along = tangencyPoint - dimPoint;
-        var projectedLength = along.DotProduct(dir);
-        var foot = dimPoint + dir * projectedLength;
-        if (foot.DistanceTo(tangencyPoint) < 1e-4)
-        {
-            return 0;
-        }
-
-        AppendRadiusLine(tr, modelSpace, dimPoint, foot, axisName, arcIndex, radius, RoadXData.RoleRadiusDimArc, null);
-        return 1;
-    }
-
-    private static void AppendRadiusLine(
-        Transaction tr,
-        BlockTableRecord modelSpace,
-        Point3d start,
-        Point3d end,
-        string axisName,
-        int arcIndex,
-        double radius,
-        string role,
-        short? colorIndex)
-    {
-        var line = new Line(start, end) { Layer = RadiusLayerName };
-        if (colorIndex is not null)
-        {
-            line.Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex.Value);
-        }
-
-        modelSpace.AppendEntity(line);
-        tr.AddNewlyCreatedDBObject(line, true);
-        RoadXData.AttachRadiusAnnotation(line, axisName, role, arcIndex, radius);
     }
 }
