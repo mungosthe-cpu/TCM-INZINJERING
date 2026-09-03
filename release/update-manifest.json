@@ -1,0 +1,8 @@
+{
+  "Version": "2.1.7",
+  "ReleaseNotes": "Šta je novo u 2.1.7:\n• TCMNIVUPIT — upit stacionaže i kote na klik u podužnom profilu (opciona oznaka)\n• TCMTERPROF — referentne kote gore/dole; gornja ≥ max terena + 0,5 m\n• TCMOSELEMENTI — ispravan izvoz svih poprečnih profila (uključujući krajnji)\n• TCM Projekat panel — stabilniji prikaz i klikovi na dugmad\n• Sitne ispravke Situacije / Nivelete",
+  "DownloadUrl": "https://201-79-6-191.sslip.io/updates/TCM-INZINJERING-Setup-2.1.7.exe",
+  "Mandatory": false,
+  "MinSupportedVersion": "1.0.0",
+  "PublishedUtc": "2026-09-03T09:00:00Z"
+}
